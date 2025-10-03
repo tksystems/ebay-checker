@@ -1,36 +1,146 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# eBay Store Monitor
 
-## Getting Started
+eBayストアの出品リストを監視し、変化があった際に通知を送信するWebアプリケーションです。
 
-First, run the development server:
+## 概要
+
+このアプリケーションは、指定されたeBayストアの出品リストを定期的に監視し、以下の機能を提供します：
+
+- ユーザー登録・認証システム（admin/customer role）
+- eBayストアの出品リスト監視
+- 出品リストの変化を検知した際のメール・LINE通知
+- Google Spreadsheet風の管理画面での売れた商品の閲覧
+
+## 技術スタック
+
+- **フロントエンド**: Next.js 15, TypeScript, Tailwind CSS
+- **バックエンド**: Next.js API Routes
+- **データベース**: Prisma ORM
+- **認証**: NextAuth.js
+- **通知**: Resend (メール), LINE Notify API
+- **クローリング**: Playwright with Stealth Plugin
+- **デプロイ**: AWS Amplify, Lightsail(クローラー用)
+
+## 主要機能
+
+### 1. ユーザー管理
+- ユーザー登録（名前、メールアドレス）
+- ロールベースのアクセス制御（admin/customer）
+- adminは全てのcustomerの状態を閲覧可能
+
+### 2. eBayストア監視
+- 指定されたeBayストアの出品リストを定期的にクローリング
+- 重複監視の防止（複数サーバーでの実行時）
+- クローリング情報のDB記録
+- レート制限の実装
+
+### 3. 通知システム
+- 出品リストの変化検知時のメール通知（Resend）
+- LINE通知機能
+- 状況に応じた通知内容の調整
+
+### 4. 管理画面
+- Google Spreadsheet風のUI
+- 売れた商品の一覧表示
+- リアルタイムでのデータ更新
+
+## セットアップ
+
+### 前提条件
+- Node.js 18以上
+- npm または yarn
+- データベース（MySQL8.0）
+
+### インストール
 
 ```bash
+# 依存関係のインストール
+npm install
+
+# 環境変数の設定
+cp .env.example .env
+# .envファイルを編集して必要な環境変数を設定
+
+# データベースのセットアップ
+npx prisma generate
+npx prisma db push
+
+# 開発サーバーの起動
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### 環境変数
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```env
+# データベース
+DATABASE_URL="mysql://username:password@localhost:5432/ebay_monitor"
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+# NextAuth.js
+NEXTAUTH_SECRET="your-secret-key"
+NEXTAUTH_URL="http://localhost:3000"
 
-## Learn More
+# Resend (メール通知)
+RESEND_API_KEY="your-resend-api-key"
 
-To learn more about Next.js, take a look at the following resources:
+# LINE Notify
+LINE_NOTIFY_TOKEN="your-line-notify-token"
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 使用方法
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### ストア監視の開始
 
-## Deploy on Vercel
+```bash
+# ストア監視スクリプトの実行
+npm run ebay:store:observe
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+このスクリプトは以下の処理を行います：
+1. DBからストア情報を取得
+2. 他の監視ツールが動作していないことを確認
+3. クローラーを起動してストア情報を取得
+4. 取得したデータをDBに記録
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### 管理画面へのアクセス
+
+1. ブラウザで `http://localhost:3000` にアクセス
+2. ユーザー登録・ログイン
+3. 管理画面で売れた商品を閲覧
+
+## プロジェクト構造
+
+```
+src/
+├── app/                    # Next.js App Router
+│   ├── api/               # API Routes
+│   ├── admin/             # 管理画面
+│   └── auth/              # 認証関連
+├── components/            # React コンポーネント
+├── lib/                   # ユーティリティ関数
+├── prisma/                # Prisma スキーマ
+└── scripts/               # クローリングスクリプト
+```
+
+## 開発
+
+### データベースマイグレーション
+
+```bash
+# マイグレーションファイルの生成
+npx prisma migrate dev --name migration_name
+
+# データベースのリセット
+npx prisma migrate reset
+```
+
+### テスト
+
+```bash
+# ユニットテスト
+npm run test
+
+# E2Eテスト
+npm run test:e2e
+```
+
+## デプロイ
