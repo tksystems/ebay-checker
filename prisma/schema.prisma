@@ -1,0 +1,223 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  binaryTargets = ["native", "darwin", "rhel-openssl-1.0.x"]
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  CUSTOMER
+}
+
+enum ProductStatus {
+  ACTIVE
+  SOLD
+  ENDED
+  REMOVED
+}
+
+enum CrawlLogStatus {
+  SUCCESS
+  FAILED
+  PARTIAL
+}
+
+enum NotificationType {
+  EMAIL
+  LINE
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+enum ChangeType {
+  PRICE_CHANGE
+  STATUS_CHANGE
+  TITLE_CHANGE
+  QUANTITY_CHANGE
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  role      UserRole @default(CUSTOMER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  userEmails           UserEmail[]
+  notifications        Notification[]
+  notificationSettings NotificationSettings?
+
+  @@map("users")
+}
+
+model UserEmail {
+  id         String   @id @default(cuid())
+  userId     String
+  email      String
+  isPrimary  Boolean  @default(false)
+  isVerified Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relations
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  notifications Notification[]
+
+  @@unique([userId, email])
+  @@map("user_emails")
+}
+
+model Store {
+  id             String    @id @default(cuid())
+  storeId        String    @unique
+  storeName      String
+  storeUrl       String
+  isActive       Boolean   @default(true)
+  crawlInterval  Int       @default(1) // 秒単位、最短1秒
+  lastCrawledAt  DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  // Relations
+  products    Product[]
+  crawlLogs   CrawlLog[]
+  crawlStatus CrawlStatus?
+
+  @@map("stores")
+}
+
+model Product {
+  id          String        @id @default(cuid())
+  storeId     String
+  ebayItemId  String        @unique
+  title       String
+  price       Decimal       @db.Decimal(10, 2)
+  currency    String        @default("USD")
+  quantity    Int           @default(1)
+  status      ProductStatus @default(ACTIVE)
+  condition   String?
+  imageUrl    String?
+  listingUrl  String
+  soldAt      DateTime?
+  firstSeenAt DateTime      @default(now())
+  lastSeenAt  DateTime      @default(now())
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  // Relations
+  store          Store           @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  productChanges ProductChange[]
+
+  @@index([storeId])
+  @@index([status])
+  @@index([lastSeenAt])
+  @@map("products")
+}
+
+model CrawlLog {
+  id              String     @id @default(cuid())
+  storeId         String
+  status          CrawlLogStatus
+  productsFound   Int        @default(0)
+  productsNew     Int        @default(0)
+  productsUpdated Int        @default(0)
+  productsSold    Int        @default(0)
+  errorMessage    String?
+  startedAt       DateTime
+  completedAt     DateTime?
+  createdAt       DateTime   @default(now())
+
+  // Relations
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@index([storeId])
+  @@index([startedAt])
+  @@map("crawl_logs")
+}
+
+model CrawlStatus {
+  id        String   @id @default(cuid())
+  storeId   String   @unique
+  isRunning Boolean  @default(false)
+  startedAt DateTime?
+  serverId  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@map("crawl_status")
+}
+
+model Notification {
+  id           String            @id @default(cuid())
+  userId       String
+  userEmailId  String?
+  type         NotificationType
+  subject      String
+  message      String
+  status       NotificationStatus @default(PENDING)
+  sentAt       DateTime?
+  errorMessage String?
+  createdAt    DateTime          @default(now())
+
+  // Relations
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userEmail UserEmail? @relation(fields: [userEmailId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+model NotificationSettings {
+  id                    String  @id @default(cuid())
+  userId                String  @unique
+  emailEnabled          Boolean @default(true)
+  lineEnabled           Boolean @default(false)
+  lineNotifyToken       String?
+  notifyOnNewProduct    Boolean @default(true)
+  notifyOnPriceChange   Boolean @default(true)
+  notifyOnSold          Boolean @default(true)
+  notifyOnQuantityChange Boolean @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notification_settings")
+}
+
+model ProductChange {
+  id         String     @id @default(cuid())
+  productId  String
+  changeType ChangeType
+  oldValue   String
+  newValue   String
+  changedAt  DateTime   @default(now())
+  createdAt  DateTime   @default(now())
+
+  // Relations
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@index([changeType])
+  @@index([changedAt])
+  @@map("product_changes")
+}
