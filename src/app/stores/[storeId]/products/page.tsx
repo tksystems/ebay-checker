@@ -297,7 +297,7 @@ export default function ProductsPage({ params }: { params: Promise<{ storeId: st
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                         <button
-                          onClick={() => window.open(`/api/stores/${resolvedParams.storeId}/products/${product.id}`, '_blank')}
+                          onClick={() => window.location.href = `/stores/${resolvedParams.storeId}/products/${product.id}`}
                           className="inline-flex items-center px-3 py-1 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50"
                         >
                           <EyeIcon className="h-3 w-3 mr-1" />
