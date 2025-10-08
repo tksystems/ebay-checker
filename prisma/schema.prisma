@@ -65,6 +65,7 @@ model User {
   userEmails           UserEmail[]
   notifications        Notification[]
   notificationSettings NotificationSettings?
+  subscriptions        Subscription[]
 
   @@map("users")
 }
@@ -137,9 +138,10 @@ model Store {
   updatedAt      DateTime  @updatedAt
 
   // Relations
-  products    Product[]
-  crawlLogs   CrawlLog[]
-  crawlStatus CrawlStatus?
+  products      Product[]
+  crawlLogs     CrawlLog[]
+  crawlStatus   CrawlStatus?
+  subscriptions Subscription[]
 
   @@map("stores")
 }
@@ -180,7 +182,7 @@ model CrawlLog {
   productsNew     Int        @default(0)
   productsUpdated Int        @default(0)
   productsSold    Int        @default(0)
-  errorMessage    String?
+  errorMessage    String? @db.Text
   startedAt       DateTime
   completedAt     DateTime?
   createdAt       DateTime   @default(now())
@@ -247,6 +249,24 @@ model NotificationSettings {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("notification_settings")
+}
+
+model Subscription {
+  id        String   @id @default(cuid())
+  userId    String
+  storeId   String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, storeId])
+  @@index([userId])
+  @@index([storeId])
+  @@map("subscriptions")
 }
 
 model ProductChange {

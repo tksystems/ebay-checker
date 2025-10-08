@@ -1,10 +1,7 @@
-import { PrismaAdapter } from "@next-auth/prisma-adapter"
 import CredentialsProvider from "next-auth/providers/credentials"
-import { prisma } from "@/lib/prisma"
 import { authService } from "@/services/authService"
 
 export const authOptions = {
-  adapter: PrismaAdapter(prisma),
   providers: [
     CredentialsProvider({
       name: "credentials",
@@ -35,25 +32,27 @@ export const authOptions = {
       }
     })
   ],
-        session: {
-          strategy: "jwt" as const
-        },
-        callbacks: {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          async jwt({ token, user }: { token: any; user: any }) {
-            if (user) {
-              token.role = (user as { role?: string }).role
-            }
-            return token
-          },
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          async session({ session, token }: { session: any; token: any }) {
-            if (token) {
-              (session.user as { role?: string }).role = token.role
-            }
-            return session
-          }
-        },
+  session: {
+    strategy: "jwt" as const
+  },
+  callbacks: {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    async jwt({ token, user }: { token: any; user: any }) {
+      if (user) {
+        token.id = user.id
+        token.role = user.role
+      }
+      return token
+    },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    async session({ session, token }: { session: any; token: any }) {
+      if (token) {
+        session.user.id = token.id || token.sub
+        session.user.role = token.role
+      }
+      return session
+    }
+  },
   pages: {
     signIn: "/login"
   }

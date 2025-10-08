@@ -18,8 +18,21 @@ eBayストアの出品リストを監視し、変化があった際に通知を�
 - **データベース**: Prisma ORM
 - **認証**: NextAuth.js
 - **通知**: Resend (メール), LINE Notify API
-- **クローリング**: Playwright with Stealth Plugin
+- **クローリング**: Playwright with Stealth Plugin (CLIスクリプト専用)
 - **デプロイ**: AWS Amplify, Lightsail(クローラー用)
+
+## アーキテクチャ
+
+### Webアプリケーション (Next.js)
+- ユーザー認証・管理
+- ストア管理UI
+- 商品一覧表示
+- 通知設定
+
+### クローリングシステム (CLIスクリプト)
+- Playwrightを使用したeBayストアのクローリング
+- バックグラウンドでの定期実行
+- 商品データの収集・更新
 
 ## 主要機能
 
