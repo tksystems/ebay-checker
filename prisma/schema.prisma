@@ -47,6 +47,15 @@ enum ChangeType {
   QUANTITY_CHANGE
 }
 
+enum VerificationStatus {
+  PENDING      // 未検証
+  VERIFIED     // 検証済み
+  SOLD_CONFIRMED // 売上確認済み
+  OUT_OF_STOCK   // 在庫切れ
+  LISTING_ENDED  // 出品終了
+  ERROR         // エラー
+}
+
 model User {
   id            String    @id @default(cuid())
   name          String
@@ -164,6 +173,14 @@ model Product {
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
+  // 検証用フィールド
+  verificationStatus     VerificationStatus @default(PENDING)
+  lastSoldQuantity       Int?
+  lastAvailableQuantity  Int?
+  lastRemainingQuantity  Int?
+  lastVerifiedAt         DateTime?
+  verificationError      String? @db.Text
+
   // Relations
   store          Store           @relation(fields: [storeId], references: [id], onDelete: Cascade)
   productChanges ProductChange[]
@@ -171,6 +188,7 @@ model Product {
   @@index([storeId])
   @@index([status])
   @@index([lastSeenAt])
+  @@index([verificationStatus])
   @@map("products")
 }
 

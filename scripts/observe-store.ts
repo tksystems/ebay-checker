@@ -49,16 +49,16 @@ class StoreObserver {
     // 初回実行
     await this.runObservation();
 
-    // 定期実行（5分間隔）
+    // 定期実行（1分間隔）
     this.intervalId = setInterval(async () => {
       await this.runObservation();
-    }, 5 * 60 * 1000); // 5分
+    }, 1 * 60 * 1000); // 1分
   }
 
   /**
    * 監視を停止
    */
-  stop(): void {
+  async stop(): Promise<void> {
     if (!this.isRunning) {
       console.log('監視は実行されていません');
       return;
@@ -69,6 +69,25 @@ class StoreObserver {
       clearInterval(this.intervalId);
       this.intervalId = null;
     }
+
+    // このサーバーのロック状態をクリーンアップ
+    try {
+      await prisma.crawlStatus.updateMany({
+        where: {
+          serverId: this.serverId,
+          isRunning: true
+        },
+        data: {
+          isRunning: false,
+          serverId: null,
+          startedAt: null
+        }
+      });
+      console.log('🧹 このサーバーのロック状態をクリーンアップしました');
+    } catch (error) {
+      console.error('❌ ロック状態のクリーンアップ中にエラー:', error);
+    }
+
     console.log('🛑 eBayストア監視を停止しました');
   }
 
@@ -78,6 +97,9 @@ class StoreObserver {
   private async runObservation(): Promise<void> {
     try {
       console.log(`\n📊 監視実行開始: ${new Date().toISOString()}`);
+
+      // 古いロック状態をクリーンアップ
+      await this.cleanupStaleLocks();
 
       // アクティブなストアを取得
       const stores = await prisma.store.findMany({
@@ -97,6 +119,36 @@ class StoreObserver {
 
     } catch (error) {
       console.error('❌ 監視実行中にエラーが発生しました:', error);
+    }
+  }
+
+  /**
+   * 古いロック状態をクリーンアップ
+   */
+  private async cleanupStaleLocks(): Promise<void> {
+    try {
+      // 30分以上前から実行中のロックをクリーンアップ
+      const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
+      
+      const result = await prisma.crawlStatus.updateMany({
+        where: {
+          isRunning: true,
+          startedAt: {
+            lt: thirtyMinutesAgo
+          }
+        },
+        data: {
+          isRunning: false,
+          serverId: null,
+          startedAt: null
+        }
+      });
+
+      if (result.count > 0) {
+        console.log(`🧹 ${result.count}件の古いロック状態をクリーンアップしました`);
+      }
+    } catch (error) {
+      console.error('❌ ロック状態のクリーンアップ中にエラー:', error);
     }
   }
 
@@ -224,7 +276,7 @@ class StoreObserver {
    */
   async shutdown(): Promise<void> {
     console.log('\n🛑 シャットダウンシグナルを受信しました...');
-    this.stop();
+    await this.stop();
     
     // 実行中のクロールを待機
     await new Promise(resolve => setTimeout(resolve, 5000));

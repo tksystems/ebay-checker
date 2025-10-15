@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { ProductStatus, CrawlLogStatus } from "@prisma/client";
+import { ProductStatus, CrawlLogStatus, VerificationStatus } from "@prisma/client";
 
 // サーバーサイドでのみPlaywrightをインポート
 let chromium: typeof import('playwright-extra').chromium | undefined;
@@ -422,17 +422,32 @@ export class EbayCrawlerService {
     let productsUpdated = 0;
     let productsSold = 0;
 
-    // 現在の商品を取得
+    // 直前のクロール（最大30分前）の商品を取得（比較用）
+    const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
     const existingProducts = await prisma.product.findMany({
+      where: { 
+        storeId,
+        lastSeenAt: {
+          gte: thirtyMinutesAgo
+        }
+        // ステータス条件を削除 - すべての商品を比較対象にする
+      }
+    });
+
+    // 既存商品の更新用（すべての商品）
+    const allExistingProducts = await prisma.product.findMany({
       where: { storeId }
     });
 
-    const existingItemIds = new Set(existingProducts.map(p => p.ebayItemId));
     const currentItemIds = new Set(products.map(p => p.itemId));
+    
+    console.log(`📊 比較対象: 直前のクロール商品（30分以内） ${existingProducts.length}件 vs 現在の商品 ${products.length}件`);
 
-    // 新商品を追加
+    // 新商品を追加（既存の商品と重複しないもののみ）
+    const allExistingItemIds = new Set(allExistingProducts.map(p => p.ebayItemId));
+    
     for (const product of products) {
-      if (!existingItemIds.has(product.itemId)) {
+      if (!allExistingItemIds.has(product.itemId)) {
         await prisma.product.create({
           data: {
             storeId,
@@ -452,7 +467,7 @@ export class EbayCrawlerService {
         productsNew++;
       } else {
         // 既存商品の更新
-        const existingProduct = existingProducts.find(p => p.ebayItemId === product.itemId);
+        const existingProduct = allExistingProducts.find(p => p.ebayItemId === product.itemId);
         if (existingProduct) {
           const newPrice = this.parsePrice(product.price);
           const hasChanges = 
@@ -484,18 +499,21 @@ export class EbayCrawlerService {
       }
     }
 
-    // 売れた商品を検出
+    // 一覧から消えた商品を検出（検証待ちとしてマーク）
     for (const existingProduct of existingProducts) {
       if (!currentItemIds.has(existingProduct.ebayItemId)) {
+        console.log(`🔍 商品が一覧から消えました: ${existingProduct.title} (${existingProduct.ebayItemId})`);
+        
+        // 即座にSOLDステータスにせず、検証待ちとしてマーク
         await prisma.product.update({
           where: { id: existingProduct.id },
           data: {
-            status: ProductStatus.SOLD,
-            soldAt: new Date(),
+            status: ProductStatus.REMOVED, // 一時的にREMOVEDステータス
+            verificationStatus: VerificationStatus.PENDING, // 検証待ち
             lastSeenAt: new Date(),
           }
         });
-        productsSold++;
+        productsSold++; // 統計上は「売れた」としてカウント（後で検証により調整される可能性）
       }
     }
 

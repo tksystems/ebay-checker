@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, use } from 'react'
+import { useState, useEffect, use, useCallback } from 'react'
 import { ArrowLeftIcon, CurrencyDollarIcon, ClockIcon, CalendarIcon, TagIcon, ArrowTopRightOnSquareIcon } from '@heroicons/react/24/outline'
 
 interface Product {
@@ -41,7 +41,7 @@ export default function ProductDetailPage({
   const [error, setError] = useState<string | null>(null)
 
   // 商品詳細を取得
-  const fetchProduct = async () => {
+  const fetchProduct = useCallback(async () => {
     try {
       const response = await fetch(`/api/stores/${resolvedParams.storeId}/products/${resolvedParams.productId}`)
       const data = await response.json()
@@ -55,10 +55,10 @@ export default function ProductDetailPage({
       console.error('商品詳細の取得中にエラー:', error)
       setError('商品詳細の取得中にエラーが発生しました')
     }
-  }
+  }, [resolvedParams.storeId, resolvedParams.productId])
 
   // ストア情報を取得
-  const fetchStore = async () => {
+  const fetchStore = useCallback(async () => {
     try {
       const response = await fetch('/api/stores')
       const data = await response.json()
@@ -75,7 +75,7 @@ export default function ProductDetailPage({
       console.error('ストア情報の取得中にエラー:', error)
       setError('ストア情報の取得中にエラーが発生しました')
     }
-  }
+  }, [resolvedParams.storeId])
 
   useEffect(() => {
     const loadData = async () => {
@@ -85,7 +85,7 @@ export default function ProductDetailPage({
     }
     
     loadData()
-  }, [resolvedParams.storeId, resolvedParams.productId])
+  }, [fetchProduct, fetchStore])
 
   const getStatusColor = (status: string) => {
     switch (status) {

@@ -25,7 +25,10 @@ export async function GET(
 
     const products = await prisma.product.findMany({
       where: { storeId },
-      orderBy: { lastSeenAt: 'desc' },
+      orderBy: [
+        { soldAt: 'desc' }, // 売れた商品を優先的に表示
+        { lastSeenAt: 'desc' }
+      ],
       take: limit,
       skip: offset
     })
