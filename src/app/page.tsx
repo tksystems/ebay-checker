@@ -51,14 +51,11 @@ export default function Home() {
           {/* CTA ボタン */}
           <div className="space-y-4">
             <Link
-              href="/dashboard"
+              href="/login"
               className="inline-block bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-8 rounded-lg transition-colors duration-200"
             >
-              ダッシュボードを見る
-            </Link>
-            <div className="text-sm text-gray-500 dark:text-gray-400">
-              ログインが必要です
-            </div>
+              ログイン
+              </Link>
           </div>
 
           {/* フッター */}

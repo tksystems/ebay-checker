@@ -200,7 +200,7 @@ export default function ProductsPage({ params }: { params: Promise<{ storeId: st
                 <select
                   value={filter}
                   onChange={(e) => setFilter(e.target.value as 'all' | 'ACTIVE' | 'SOLD' | 'ENDED' | 'REMOVED')}
-                  className="border border-gray-300 rounded-md px-3 py-1 text-sm"
+                  className="border border-gray-300 rounded-md px-3 py-1 text-sm bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 >
                   <option value="all">すべて</option>
                   <option value="ACTIVE">販売中</option>
@@ -216,7 +216,7 @@ export default function ProductsPage({ params }: { params: Promise<{ storeId: st
                 <select
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value as 'lastSeenAt' | 'price' | 'title')}
-                  className="border border-gray-300 rounded-md px-3 py-1 text-sm"
+                  className="border border-gray-300 rounded-md px-3 py-1 text-sm bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 >
                   <option value="lastSeenAt">最終確認日時</option>
                   <option value="price">価格</option>
@@ -224,7 +224,7 @@ export default function ProductsPage({ params }: { params: Promise<{ storeId: st
                 </select>
                 <button
                   onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-                  className="px-2 py-1 text-sm border border-gray-300 rounded-md hover:bg-gray-50"
+                  className="px-2 py-1 text-sm border border-gray-300 rounded-md bg-white text-gray-900 hover:bg-gray-50 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 >
                   {sortOrder === 'asc' ? '↑' : '↓'}
                 </button>
