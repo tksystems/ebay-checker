@@ -51,6 +51,7 @@ export class EbayCrawlerService {
   private readonly MAX_RETRIES = 3;
   private readonly PAGE_TIMEOUT = 60000;
   private readonly ELEMENT_TIMEOUT = 15000;
+  private readonly MAX_PAGES_PER_SESSION = 5; // セッションあたりの最大ページ数
 
   /**
    * ストアの全商品をクローリング
@@ -170,16 +171,87 @@ export class EbayCrawlerService {
       throw new Error('Playwright is not available. This service should only be used in CLI scripts.');
     }
 
-    const browser = await chromium.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
+    // リトライ機能付きでブラウザを起動
+    return await this.launchBrowserWithRetry(async (browser) => {
+      return await this.crawlAllPages(browser, shopName);
     });
+  }
 
+  /**
+   * リトライ機能付きブラウザ起動
+   */
+  private async launchBrowserWithRetry<T>(operation: (browser: import('playwright').Browser) => Promise<T>): Promise<T> {
+    let lastError: Error | null = null;
+    
+    for (let attempt = 1; attempt <= this.MAX_RETRIES; attempt++) {
+      let browser: import('playwright').Browser | null = null;
+      
+      try {
+        console.log(`🔄 ブラウザ起動試行 ${attempt}/${this.MAX_RETRIES}`);
+        
+        browser = await chromium!.launch({
+          headless: true,
+          args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-accelerated-2d-canvas',
+            '--no-zygote',
+            '--single-process',
+            '--disable-gpu',
+            '--disable-software-rasterizer',
+            '--disable-background-timer-throttling',
+            '--disable-backgrounding-occluded-windows',
+            '--disable-renderer-backgrounding',
+            '--disable-features=TranslateUI',
+            '--disable-ipc-flooding-protection',
+            '--memory-pressure-off',
+            '--max_old_space_size=512'
+          ]
+        });
+
+        const result = await operation(browser);
+        return result;
+
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error('Unknown error');
+        
+        console.error(`❌ ブラウザ操作失敗 (試行 ${attempt}/${this.MAX_RETRIES}):`, lastError.message);
+        
+        // ブラウザが起動していた場合は確実に閉じる
+        if (browser) {
+          try {
+            await browser.close();
+          } catch (closeError) {
+            console.warn('ブラウザのクローズ中にエラー:', closeError);
+          }
+        }
+        
+        // 最後の試行でない場合は待機
+        if (attempt < this.MAX_RETRIES) {
+          const waitTime = attempt * 2000; // 2秒、4秒、6秒...
+          console.log(`⏳ ${waitTime}ms待機してからリトライします...`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+        }
+      }
+    }
+    
+    throw new Error(`ブラウザ操作が${this.MAX_RETRIES}回連続で失敗しました。最後のエラー: ${lastError?.message}`);
+  }
+
+  /**
+   * 全ページをクロール
+   */
+  private async crawlAllPages(browser: import('playwright').Browser, shopName: string): Promise<EbayProduct[]> {
     try {
       const page = await browser.newPage();
       
+      // ページのタイムアウト設定を追加
+      page.setDefaultTimeout(this.PAGE_TIMEOUT);
+      page.setDefaultNavigationTimeout(this.PAGE_TIMEOUT);
+      
       // 不要なリソースをブロック（軽量化）
-      await page.route('**/*', (route) => {
+      await page.route('**/*', (route: import('playwright').Route) => {
         const resourceType = route.request().resourceType();
         const url = route.request().url();
         
@@ -197,12 +269,19 @@ export class EbayCrawlerService {
       const seenItemIds = new Set<string>();
       let currentPage = 1;
       let hasNextPage = true;
+      let sessionPageCount = 0;
 
-      while (hasNextPage) {
+      while (hasNextPage && sessionPageCount < this.MAX_PAGES_PER_SESSION) {
         const url = `https://www.ebay.com/sch/i.html?_dkr=1&iconV2Request=true&_blrs=recall_filtering&_ssn=f_sou_shop&store_cat=0&store_name=${shopName}&_ipg=240&_sop=15&_pgn=${currentPage}`;
         
         console.log(`ページ ${currentPage} を取得中: ${url}`);
-        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: this.PAGE_TIMEOUT });
+        
+        try {
+          await page.goto(url, { waitUntil: 'domcontentloaded', timeout: this.PAGE_TIMEOUT });
+        } catch (error) {
+          console.error(`❌ ページ ${currentPage} の読み込みに失敗:`, error);
+          throw new Error(`ページ読み込み失敗: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
         
         // 商品要素が読み込まれるまで待機
         try {
@@ -221,24 +300,31 @@ export class EbayCrawlerService {
         let lastProductCount = 0;
         
         for (let i = 0; i < 10; i++) {
-          const currentCount = await page.evaluate(() => {
-            const elements = document.querySelectorAll('.s-card__title, .s-item__title');
-            let validCount = 0;
-            elements.forEach((element) => {
-              const title = element.textContent?.trim();
-              const link = element.closest('a')?.href;
-              if (title && link && title !== '' && 
-                  !title.includes('Shop on eBay') && 
-                  !title.includes('Shop eBay') &&
-                  !title.includes('eBay Stores') &&
-                  !title.includes('Sponsored') &&
-                  !title.includes('Advertisement') &&
-                  link.includes('/itm/')) {
-                validCount++;
-              }
+          let currentCount = 0;
+          try {
+            currentCount = await page.evaluate(() => {
+              const elements = document.querySelectorAll('.s-card__title, .s-item__title');
+              let validCount = 0;
+              elements.forEach((element) => {
+                const title = element.textContent?.trim();
+                const link = element.closest('a')?.href;
+                if (title && link && title !== '' && 
+                    !title.includes('Shop on eBay') && 
+                    !title.includes('Shop eBay') &&
+                    !title.includes('eBay Stores') &&
+                    !title.includes('Sponsored') &&
+                    !title.includes('Advertisement') &&
+                    link.includes('/itm/')) {
+                  validCount++;
+                }
+              });
+              return validCount;
             });
-            return validCount;
-          });
+          } catch (error) {
+            console.error(`❌ ページ ${currentPage} の商品数カウントに失敗:`, error);
+            // エラーが発生した場合は現在のカウントを維持
+            currentCount = lastProductCount;
+          }
           
           if (currentCount > maxProductCount) {
             maxProductCount = currentCount;
@@ -268,11 +354,13 @@ export class EbayCrawlerService {
           await new Promise(resolve => setTimeout(resolve, 1500));
         }
         
-        const products = await page.evaluate(() => {
-          const productElements = document.querySelectorAll('.s-card__title, .s-item__title');
-          const products: EbayProduct[] = [];
-          
-          productElements.forEach((element) => {
+        let products: EbayProduct[] = [];
+        try {
+          products = await page.evaluate(() => {
+            const productElements = document.querySelectorAll('.s-card__title, .s-item__title');
+            const products: EbayProduct[] = [];
+            
+            productElements.forEach((element) => {
             const title = element.textContent?.trim();
             const link = element.closest('a')?.href;
             
@@ -345,8 +433,12 @@ export class EbayCrawlerService {
             }
           });
           
-          return products;
-        });
+            return products;
+          });
+        } catch (error) {
+          console.error(`❌ ページ ${currentPage} の商品データ取得に失敗:`, error);
+          products = []; // エラーの場合は空配列を返す
+        }
 
         // 重複を除外して商品を追加
         const uniqueProducts = products.filter(product => {
@@ -361,24 +453,31 @@ export class EbayCrawlerService {
         allProducts.push(...uniqueProducts);
 
         // 次のページがあるかチェック
-        const paginationInfo = await page.evaluate(() => {
-          const nextButton1 = document.querySelector('.pagination__next');
-          const nextButton2 = document.querySelector('.pagination__next:not(.pagination__next--disabled)');
-          const nextButton3 = document.querySelector('a[aria-label="Next page"]');
-          const nextButton4 = document.querySelector('.pagination__next[href*="_pgn="]');
-          
-          return {
-            nextButton1: !!nextButton1,
-            nextButton1Disabled: nextButton1 ? nextButton1.classList.contains('pagination__next--disabled') : false,
-            nextButton2: !!nextButton2,
-            nextButton3: !!nextButton3,
-            nextButton4: !!nextButton4,
-            hasNext: !!(nextButton1 && !nextButton1.classList.contains('pagination__next--disabled')) ||
-                     !!(nextButton2) ||
-                     !!(nextButton3) ||
-                     !!(nextButton4)
-          };
-        });
+        let paginationInfo = { hasNext: false };
+        try {
+          paginationInfo = await page.evaluate(() => {
+            const nextButton1 = document.querySelector('.pagination__next');
+            const nextButton2 = document.querySelector('.pagination__next:not(.pagination__next--disabled)');
+            const nextButton3 = document.querySelector('a[aria-label="Next page"]');
+            const nextButton4 = document.querySelector('.pagination__next[href*="_pgn="]');
+            
+            return {
+              nextButton1: !!nextButton1,
+              nextButton1Disabled: nextButton1 ? nextButton1.classList.contains('pagination__next--disabled') : false,
+              nextButton2: !!nextButton2,
+              nextButton3: !!nextButton3,
+              nextButton4: !!nextButton4,
+              hasNext: !!(nextButton1 && !nextButton1.classList.contains('pagination__next--disabled')) ||
+                       !!(nextButton2) ||
+                       !!(nextButton3) ||
+                       !!(nextButton4)
+            };
+          });
+        } catch (error) {
+          console.error(`❌ ページ ${currentPage} のページネーション判定に失敗:`, error);
+          // エラーの場合は安全側に倒して次のページなしと判定
+          paginationInfo = { hasNext: false };
+        }
         
         const nextPageExists = paginationInfo.hasNext;
         const isLastPage = products.length < 240;
@@ -393,11 +492,24 @@ export class EbayCrawlerService {
         
         console.log(`ページ ${currentPage} の次ページ判定: hasNextPage=${hasNextPage}`);
         currentPage++;
+        sessionPageCount++;
+
+        // セッション制限に達した場合の警告
+        if (sessionPageCount >= this.MAX_PAGES_PER_SESSION) {
+          console.log(`⚠️ セッション制限に達しました (${this.MAX_PAGES_PER_SESSION}ページ)。残りのページは次回のクロールで処理されます。`);
+          hasNextPage = false;
+        }
 
         // ページ間の待機
         if (hasNextPage) {
           console.log('次のページまで1秒待機...');
           await new Promise(resolve => setTimeout(resolve, this.DEFAULT_CRAWL_INTERVAL));
+        }
+        
+        // メモリ使用量を監視（本番環境でのデバッグ用）
+        if (process.env.NODE_ENV === 'production') {
+          const memUsage = process.memoryUsage();
+          console.log(`📊 メモリ使用量: RSS=${Math.round(memUsage.rss / 1024 / 1024)}MB, Heap=${Math.round(memUsage.heapUsed / 1024 / 1024)}MB`);
         }
       }
 
@@ -405,7 +517,12 @@ export class EbayCrawlerService {
       return allProducts;
 
     } finally {
-      await browser.close();
+      try {
+        await browser.close();
+        console.log('🧹 ブラウザを正常にクローズしました');
+      } catch (error) {
+        console.warn('ブラウザのクローズ中にエラーが発生しました:', error);
+      }
     }
   }
 
