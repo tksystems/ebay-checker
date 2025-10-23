@@ -188,6 +188,10 @@ export class EbayCrawlerService {
           '--disable-gpu',
           '--disable-web-security',
           '--disable-features=VizDisplayCompositor',
+          '--disable-blink-features=AutomationControlled',
+          '--exclude-switches=enable-automation',
+          '--disable-extensions-except',
+          '--disable-plugins-discovery',
           '--memory-pressure-off',
           '--max_old_space_size=4096'
         ]
@@ -213,15 +217,34 @@ export class EbayCrawlerService {
     try {
       const page = await browser.newPage();
       
+      // より自然なブラウザ環境を設定
+      await page.addInitScript(() => {
+        Object.defineProperty(navigator, 'webdriver', {
+          get: () => undefined,
+        });
+      });
+      
+      // 自然なHTTPヘッダーを設定
+      await page.setExtraHTTPHeaders({
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1',
+        'Upgrade-Insecure-Requests': '1',
+      });
+      
       // 不要なリソースをブロック（軽量化）
       await page.route('**/*', (route) => {
         const resourceType = route.request().resourceType();
         const url = route.request().url();
         
-        // 画像とフォントのみブロック（CSSとJavaScriptは許可）
-        if (['image', 'font'].includes(resourceType)) {
-          route.abort();
-        } else if (resourceType === 'media' && (url.includes('video') || url.includes('audio'))) {
+        // 動画と音声のみブロック（画像、フォント、CSS、JavaScriptは許可）
+        if (resourceType === 'media' && (url.includes('video') || url.includes('audio'))) {
           route.abort();
         } else {
           route.continue();
@@ -244,6 +267,9 @@ export class EbayCrawlerService {
           await page.goto(url, { waitUntil: 'domcontentloaded', timeout: this.PAGE_TIMEOUT });
           console.log(`✅ ページ ${currentPage} の読み込み完了`);
           
+          // 自然な待機時間を追加
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          
           // ページ読み込み後の状態確認
           const finalUrl = await page.url();
           const finalTitle = await page.title();
@@ -253,6 +279,14 @@ export class EbayCrawlerService {
           // ページの読み込み状態を確認
           const readyState = await page.evaluate(() => document.readyState);
           console.log(`📄 ページ読み込み状態: ${readyState}`);
+          
+          // eBayのチャレンジページを検出
+          if (finalUrl.includes('splashui/challenge') || finalTitle.includes('Pardon Our Interruption')) {
+            console.log(`❌ eBayチャレンジページにリダイレクトされました`);
+            console.log(`📄 チャレンジURL: ${finalUrl}`);
+            console.log(`📄 チャレンジタイトル: ${finalTitle}`);
+            throw new Error(`eBayチャレンジページにリダイレクトされました: ${finalTitle}`);
+          }
           
         } catch (gotoError) {
           console.error(`❌ ページ ${currentPage} の読み込み失敗:`, gotoError);
