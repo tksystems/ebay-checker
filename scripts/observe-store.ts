@@ -29,6 +29,7 @@ class StoreObserver {
   private isRunning: boolean = false;
   private intervalId: NodeJS.Timeout | null = null;
   private readonly serverId: string;
+  private resourceMonitorInterval: NodeJS.Timeout | null = null;
 
   constructor() {
     this.serverId = process.env.SERVER_ID || `server-${Date.now()}`;
@@ -53,6 +54,11 @@ class StoreObserver {
     this.intervalId = setInterval(async () => {
       await this.runObservation();
     }, 1 * 60 * 1000); // 1分
+
+    // リソース監視（30秒間隔）
+    this.resourceMonitorInterval = setInterval(() => {
+      this.logResourceUsage();
+    }, 30 * 1000); // 30秒
   }
 
   /**
@@ -68,6 +74,10 @@ class StoreObserver {
     if (this.intervalId) {
       clearInterval(this.intervalId);
       this.intervalId = null;
+    }
+    if (this.resourceMonitorInterval) {
+      clearInterval(this.resourceMonitorInterval);
+      this.resourceMonitorInterval = null;
     }
 
     // このサーバーのロック状態をクリーンアップ
@@ -156,7 +166,14 @@ class StoreObserver {
    * 個別ストアの監視
    */
   private async observeStore(store: StoreWithCrawlStatus): Promise<void> {
+    const startTime = Date.now();
+    let memoryUsage: NodeJS.MemoryUsage | null = null;
+    
     try {
+      // メモリ使用量を記録
+      memoryUsage = process.memoryUsage();
+      console.log(`📊 メモリ使用量 (開始時): RSS=${Math.round(memoryUsage.rss / 1024 / 1024)}MB, Heap=${Math.round(memoryUsage.heapUsed / 1024 / 1024)}MB`);
+      
       // 他のサーバーが実行中かチェック
       if (store.crawlStatus && store.crawlStatus.isRunning && store.crawlStatus.serverId !== this.serverId) {
         console.log(`⏭️  ストア「${store.storeName}」は他のサーバーで実行中です (${store.crawlStatus.serverId})`);
@@ -176,8 +193,15 @@ class StoreObserver {
       }
 
       console.log(`🔍 ストア「${store.storeName}」をクローリング中...`);
+      console.log(`🕐 開始時刻: ${new Date().toISOString()}`);
+      
+      // システム情報をログ出力
+      console.log(`🖥️  システム情報: Node.js ${process.version}, プラットフォーム: ${process.platform}, アーキテクチャ: ${process.arch}`);
       
       const result = await ebayCrawlerService.crawlStore(store.id);
+      
+      const endTime = Date.now();
+      const duration = endTime - startTime;
       
       if (result.success) {
         console.log(`✅ ストア「${store.storeName}」クロール完了:`);
@@ -186,6 +210,7 @@ class StoreObserver {
         console.log(`   更新: ${result.productsUpdated}件`);
         console.log(`   売れた: ${result.productsSold}件`);
         console.log(`   実行時間: ${result.duration}ms`);
+        console.log(`   総実行時間: ${duration}ms`);
 
         // 変化があった場合は通知
         if (result.productsNew > 0 || result.productsSold > 0) {
@@ -193,10 +218,56 @@ class StoreObserver {
         }
       } else {
         console.error(`❌ ストア「${store.storeName}」クロール失敗: ${result.errorMessage}`);
+        console.error(`🕐 失敗時刻: ${new Date().toISOString()}`);
+        console.error(`⏱️  失敗までの実行時間: ${duration}ms`);
       }
 
     } catch (error) {
+      const endTime = Date.now();
+      const duration = endTime - startTime;
+      
       console.error(`❌ ストア「${store.storeName}」の監視中にエラー:`, error);
+      console.error(`🕐 エラー発生時刻: ${new Date().toISOString()}`);
+      console.error(`⏱️  エラーまでの実行時間: ${duration}ms`);
+      
+      // エラーの詳細情報を出力
+      if (error instanceof Error) {
+        console.error(`📝 エラー名: ${error.name}`);
+        console.error(`📝 エラーメッセージ: ${error.message}`);
+        console.error(`📝 スタックトレース:`, error.stack);
+      }
+      
+      // メモリ使用量を記録
+      const finalMemoryUsage = process.memoryUsage();
+      console.error(`📊 メモリ使用量 (エラー時): RSS=${Math.round(finalMemoryUsage.rss / 1024 / 1024)}MB, Heap=${Math.round(finalMemoryUsage.heapUsed / 1024 / 1024)}MB`);
+      
+      if (memoryUsage) {
+        const memoryDiff = {
+          rss: finalMemoryUsage.rss - memoryUsage.rss,
+          heapUsed: finalMemoryUsage.heapUsed - memoryUsage.heapUsed
+        };
+        console.error(`📊 メモリ増加量: RSS=${Math.round(memoryDiff.rss / 1024 / 1024)}MB, Heap=${Math.round(memoryDiff.heapUsed / 1024 / 1024)}MB`);
+      }
+    }
+  }
+
+  /**
+   * リソース使用量をログ出力
+   */
+  private logResourceUsage(): void {
+    const memoryUsage = process.memoryUsage();
+    const cpuUsage = process.cpuUsage();
+    
+    console.log(`📊 リソース監視: RSS=${Math.round(memoryUsage.rss / 1024 / 1024)}MB, Heap=${Math.round(memoryUsage.heapUsed / 1024 / 1024)}MB, External=${Math.round(memoryUsage.external / 1024 / 1024)}MB`);
+    console.log(`📊 CPU使用量: User=${cpuUsage.user / 1000}ms, System=${cpuUsage.system / 1000}ms`);
+    
+    // メモリ使用量が異常に高い場合は警告
+    if (memoryUsage.rss > 1024 * 1024 * 1024) { // 1GB
+      console.warn(`⚠️  メモリ使用量が高いです: ${Math.round(memoryUsage.rss / 1024 / 1024)}MB`);
+    }
+    
+    if (memoryUsage.heapUsed > 512 * 1024 * 1024) { // 512MB
+      console.warn(`⚠️  ヒープ使用量が高いです: ${Math.round(memoryUsage.heapUsed / 1024 / 1024)}MB`);
     }
   }
 
