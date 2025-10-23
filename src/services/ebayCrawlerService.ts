@@ -240,14 +240,38 @@ export class EbayCrawlerService {
         console.log(`🕐 ページ取得開始時刻: ${new Date().toISOString()}`);
         
         try {
+          console.log(`🔍 ページナビゲーション開始: ${url}`);
           await page.goto(url, { waitUntil: 'domcontentloaded', timeout: this.PAGE_TIMEOUT });
           console.log(`✅ ページ ${currentPage} の読み込み完了`);
+          
+          // ページ読み込み後の状態確認
+          const finalUrl = await page.url();
+          const finalTitle = await page.title();
+          console.log(`📄 最終URL: ${finalUrl}`);
+          console.log(`📄 最終タイトル: ${finalTitle}`);
+          
+          // ページの読み込み状態を確認
+          const readyState = await page.evaluate(() => document.readyState);
+          console.log(`📄 ページ読み込み状態: ${readyState}`);
+          
         } catch (gotoError) {
           console.error(`❌ ページ ${currentPage} の読み込み失敗:`, gotoError);
           if (gotoError instanceof Error) {
             console.error(`📝 ページ読み込みエラー名: ${gotoError.name}`);
             console.error(`📝 ページ読み込みエラーメッセージ: ${gotoError.message}`);
+            console.error(`📝 ページ読み込みスタックトレース:`, gotoError.stack);
           }
+          
+          // エラー時のページ状態を確認
+          try {
+            const errorUrl = await page.url();
+            const errorTitle = await page.title();
+            console.log(`📄 エラー時のURL: ${errorUrl}`);
+            console.log(`📄 エラー時のタイトル: ${errorTitle}`);
+          } catch (stateError) {
+            console.log(`❌ エラー時のページ状態確認エラー: ${stateError instanceof Error ? stateError.message : String(stateError)}`);
+          }
+          
           throw gotoError;
         }
         
@@ -262,6 +286,16 @@ export class EbayCrawlerService {
             console.log(`📝 セレクター待機エラー名: ${selectorError.name}`);
             console.log(`📝 セレクター待機エラーメッセージ: ${selectorError.message}`);
           }
+          
+          // ページの状態を確認
+          try {
+            const pageUrl = await page.url();
+            const pageTitle = await page.title();
+            console.log(`📄 タイムアウト時のページURL: ${pageUrl}`);
+            console.log(`📄 タイムアウト時のページタイトル: ${pageTitle}`);
+          } catch (pageError) {
+            console.log(`❌ ページ状態確認エラー: ${pageError instanceof Error ? pageError.message : String(pageError)}`);
+          }
         }
         
         // 追加の待機時間（動的コンテンツの読み込み完了を待つ）
@@ -273,9 +307,59 @@ export class EbayCrawlerService {
         let lastProductCount = 0;
         
         for (let i = 0; i < 10; i++) {
-          // page.evaluateを排除してPlaywrightネイティブAPIを使用
-          const elements = await page.$$('.s-card__title, .s-item__title');
-          let validCount = 0;
+          // ブラウザプロセスの状態を確認
+          console.log(`🔍 ループ ${i + 1}/10: ブラウザプロセス状態確認中...`);
+          
+          try {
+            // ページの状態を確認
+            const pageUrl = await page.url();
+            const pageTitle = await page.title();
+            console.log(`📄 ページURL: ${pageUrl}`);
+            console.log(`📄 ページタイトル: ${pageTitle}`);
+            
+            // ページの読み込み状態を確認
+            const isLoaded = await page.evaluate(() => document.readyState);
+            console.log(`📄 ページ読み込み状態: ${isLoaded}`);
+            
+            // DOM要素の存在確認
+            const titleElements = await page.$$('.s-card__title, .s-item__title');
+            console.log(`🔍 タイトル要素数: ${titleElements.length}`);
+            
+            // メモリ使用量を確認
+            const memUsage = process.memoryUsage();
+            console.log(`💾 メモリ使用量: RSS=${Math.round(memUsage.rss / 1024 / 1024)}MB, Heap=${Math.round(memUsage.heapUsed / 1024 / 1024)}MB, External=${Math.round(memUsage.external / 1024 / 1024)}MB`);
+            
+            // システムリソースの監視
+            try {
+              const cpuUsage = process.cpuUsage();
+              console.log(`🖥️  CPU使用量: user=${cpuUsage.user / 1000}ms, system=${cpuUsage.system / 1000}ms`);
+            } catch (cpuError) {
+              console.log(`⚠️  CPU使用量取得エラー: ${cpuError instanceof Error ? cpuError.message : String(cpuError)}`);
+            }
+            
+            // page.evaluateを排除してPlaywrightネイティブAPIを使用
+            console.log(`🔍 page.$$()を実行中...`);
+            let elements;
+            try {
+              elements = await page.$$('.s-card__title, .s-item__title');
+              console.log(`✅ page.$$()完了: ${elements.length}個の要素を取得`);
+            } catch (pageError) {
+              console.log(`❌ page.$$()エラー発生: ${pageError instanceof Error ? pageError.message : String(pageError)}`);
+              console.log(`📝 エラー名: ${pageError instanceof Error ? pageError.name : 'Unknown'}`);
+              console.log(`📝 スタックトレース: ${pageError instanceof Error ? pageError.stack : 'No stack trace'}`);
+              
+              // ブラウザプロセスの状態を確認
+              try {
+                const isConnected = page.context().browser()?.isConnected();
+                console.log(`🔍 ブラウザ接続状態: ${isConnected}`);
+              } catch (browserError) {
+                console.log(`❌ ブラウザ状態確認エラー: ${browserError instanceof Error ? browserError.message : String(browserError)}`);
+              }
+              
+              throw pageError;
+            }
+            
+            let validCount = 0;
           
           for (const element of elements) {
             try {
@@ -347,6 +431,10 @@ export class EbayCrawlerService {
           }
           
           await new Promise(resolve => setTimeout(resolve, 1000));
+          } catch (loopError) {
+            console.error(`❌ ループ ${i + 1}でエラー発生: ${loopError instanceof Error ? loopError.message : String(loopError)}`);
+            // ループのエラーは無視して続行
+          }
         }
         
         // 最終確認のため追加待機
@@ -404,19 +492,15 @@ export class EbayCrawlerService {
           for (let i = 0; i < productElements.length; i++) {
             const element = productElements[i];
             try {
-              console.log(`🔍 要素 ${i + 1}/${productElements.length} を処理中...`);
               
               // タイトルを取得
               const title = await element.textContent();
               if (!title || title.trim() === '') {
-                console.log(`⚠️  要素 ${i + 1}: タイトルが空`);
                 continue;
               }
               
-              console.log(`✅ 要素 ${i + 1}: タイトル取得成功 (${title.length}文字)`);
               
               // リンクを取得（複数の方法を試行）
-              console.log(`🔍 要素 ${i + 1}: リンク要素を検索中...`);
               
               let linkElement = null;
               let link = null;
@@ -425,7 +509,6 @@ export class EbayCrawlerService {
               linkElement = await element.$('a');
               if (linkElement) {
                 link = await linkElement.getAttribute('href');
-                console.log(`✅ 要素 ${i + 1}: 要素内リンク取得成功`);
               }
               
               // 方法2: 親要素のリンクを検索
@@ -435,7 +518,6 @@ export class EbayCrawlerService {
                   linkElement = await parentElement.$('a');
                   if (linkElement) {
                     link = await linkElement.getAttribute('href');
-                    console.log(`✅ 要素 ${i + 1}: 親要素内リンク取得成功`);
                   }
                 }
               }
@@ -445,23 +527,18 @@ export class EbayCrawlerService {
                 const closestLink = await element.$('xpath=ancestor::a');
                 if (closestLink) {
                   link = await closestLink.getAttribute('href');
-                  console.log(`✅ 要素 ${i + 1}: 祖先リンク取得成功`);
                 }
               }
               
               if (!link) {
-                console.log(`⚠️  要素 ${i + 1}: すべての方法でリンクが見つからない`);
                 continue;
               }
               
-              console.log(`✅ 要素 ${i + 1}: リンク取得成功 (${link.length}文字)`);
               
               if (!link.includes('/itm/')) {
-                console.log(`⚠️  要素 ${i + 1}: /itm/を含まないリンク (${link.substring(0, 50)}...)`);
                 continue;
               }
               
-              console.log(`✅ 要素 ${i + 1}: /itm/リンク確認済み`);
               
               // フィルタリング
               if (title.includes('Shop on eBay') || 
@@ -469,37 +546,28 @@ export class EbayCrawlerService {
                   title.includes('eBay Stores') ||
                   title.includes('Sponsored') ||
                   title.includes('Advertisement')) {
-                console.log(`🚫 要素 ${i + 1}: フィルタリング対象`);
                 filteredCount++;
                 continue;
               }
               
-              console.log(`✅ 要素 ${i + 1}: フィルタリング通過`);
               
               // 価格を取得
-              console.log(`🔍 要素 ${i + 1}: 価格要素を検索中...`);
               let price = '価格不明';
               const sCard = await element.$('xpath=ancestor::*[contains(@class, "s-card") or contains(@class, "s-item")]');
               if (sCard) {
-                console.log(`✅ 要素 ${i + 1}: 親要素取得成功`);
                 const priceElement = await sCard.$('.s-card__price, .s-item__price, [class*="price"]');
                 if (priceElement) {
                   const priceText = await priceElement.textContent();
                   if (priceText && priceText.trim()) {
                     price = priceText.trim();
-                    console.log(`✅ 要素 ${i + 1}: 価格取得成功 (${price.length}文字)`);
                   } else {
-                    console.log(`⚠️  要素 ${i + 1}: 価格テキストが空`);
                   }
                 } else {
-                  console.log(`⚠️  要素 ${i + 1}: 価格要素が見つからない`);
                 }
               } else {
-                console.log(`⚠️  要素 ${i + 1}: 親要素が見つからない`);
               }
               
               // 商品状態を取得
-              console.log(`🔍 要素 ${i + 1}: 状態要素を検索中...`);
               let condition: string | undefined;
               if (sCard) {
                 const conditionElement = await sCard.$('.s-item__condition');
@@ -507,17 +575,13 @@ export class EbayCrawlerService {
                   const conditionText = await conditionElement.textContent();
                   if (conditionText && conditionText.trim()) {
                     condition = conditionText.trim();
-                    console.log(`✅ 要素 ${i + 1}: 状態取得成功 (${condition.length}文字)`);
                   } else {
-                    console.log(`⚠️  要素 ${i + 1}: 状態テキストが空`);
                   }
                 } else {
-                  console.log(`⚠️  要素 ${i + 1}: 状態要素が見つからない`);
                 }
               }
               
               // 画像URLを取得
-              console.log(`🔍 要素 ${i + 1}: 画像要素を検索中...`);
               let imageUrl: string | undefined;
               if (sCard) {
                 const imageElement = await sCard.$('.s-item__image img, .s-card__image img, img');
@@ -525,20 +589,15 @@ export class EbayCrawlerService {
                   const src = await imageElement.getAttribute('src');
                   if (src) {
                     imageUrl = src;
-                    console.log(`✅ 要素 ${i + 1}: 画像URL取得成功 (${src.length}文字)`);
                   } else {
-                    console.log(`⚠️  要素 ${i + 1}: 画像src属性が空`);
                   }
                 } else {
-                  console.log(`⚠️  要素 ${i + 1}: 画像要素が見つからない`);
                 }
               }
               
               // itemIdをURLから抽出
-              console.log(`🔍 要素 ${i + 1}: itemIdを抽出中...`);
               const itemIdMatch = link.match(/\/itm\/(\d+)/);
               if (itemIdMatch) {
-                console.log(`✅ 要素 ${i + 1}: itemId取得成功 (${itemIdMatch[1]})`);
                 products.push({
                   title: title.trim(),
                   price,
@@ -549,7 +608,6 @@ export class EbayCrawlerService {
                   quantity: 1
                 });
                 processedCount++;
-                console.log(`✅ 要素 ${i + 1}: 商品追加完了`);
               } else {
                 console.log(`⚠️  要素 ${i + 1}: itemIdが見つからない (${link.substring(0, 50)}...)`);
               }
@@ -641,6 +699,21 @@ export class EbayCrawlerService {
         console.error(`📝 ページエラーメッセージ: ${pageError.message}`);
         console.error(`📝 ページスタックトレース:`, pageError.stack);
       }
+      
+      // エラー発生時のシステム状態を記録
+      const errorMemUsage = process.memoryUsage();
+      console.error(`💾 エラー時メモリ使用量: RSS=${Math.round(errorMemUsage.rss / 1024 / 1024)}MB, Heap=${Math.round(errorMemUsage.heapUsed / 1024 / 1024)}MB`);
+      
+      // ブラウザプロセスの状態を確認
+      if (browser) {
+        try {
+          const isConnected = browser.isConnected();
+          console.error(`🔍 エラー時ブラウザ接続状態: ${isConnected}`);
+        } catch (browserStateError) {
+          console.error(`❌ ブラウザ状態確認エラー: ${browserStateError instanceof Error ? browserStateError.message : String(browserStateError)}`);
+        }
+      }
+      
       throw pageError;
     } finally {
       if (browser) {
