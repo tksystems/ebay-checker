@@ -329,7 +329,12 @@ export class EbayCrawlerService {
           
           // まず商品要素数を取得
           const elementCount = await page.evaluate(() => {
-            return document.querySelectorAll('.s-card__title, .s-item__title').length;
+            try {
+              return document.querySelectorAll('.s-card__title, .s-item__title').length;
+            } catch (error) {
+              console.error('要素数取得エラー:', error);
+              return 0;
+            }
           });
           
           console.log(`📊 商品要素数: ${elementCount}件`);
@@ -339,7 +344,7 @@ export class EbayCrawlerService {
             products = [];
           } else {
             // 要素数が多い場合は分割処理
-            const batchSize = Math.min(50, elementCount);
+            const batchSize = Math.min(10, elementCount); // バッチサイズを大幅に削減
             const batches = Math.ceil(elementCount / batchSize);
             
             console.log(`📦 バッチ処理: ${batches}回に分割 (1回あたり${batchSize}件)`);
@@ -350,87 +355,102 @@ export class EbayCrawlerService {
               
               console.log(`🔄 バッチ ${batch + 1}/${batches}: 要素 ${startIndex}-${endIndex} を処理中...`);
               
-              const batchProducts = await page.evaluate(({ start, end }: { start: number; end: number }) => {
-                const productElements = document.querySelectorAll('.s-card__title, .s-item__title');
-                const products: Array<{
-                  title: string;
-                  price: string;
-                  url: string;
-                  itemId: string;
-                  condition?: string;
-                  imageUrl?: string;
-                  quantity: number;
-                }> = [];
-                
-                for (let i = start; i < end; i++) {
+              try {
+                const batchProducts = await page.evaluate(({ start, end }: { start: number; end: number }) => {
                   try {
-                    const element = productElements[i];
-                    if (!element) continue;
+                    const productElements = document.querySelectorAll('.s-card__title, .s-item__title');
+                    const products: Array<{
+                      title: string;
+                      price: string;
+                      url: string;
+                      itemId: string;
+                      condition?: string;
+                      imageUrl?: string;
+                      quantity: number;
+                    }> = [];
                     
-                    const title = element.textContent?.trim();
-                    const link = element.closest('a')?.href;
-                    
-                    if (title && link && title !== '' && 
-                        !title.includes('Shop on eBay') && 
-                        !title.includes('Shop eBay') &&
-                        !title.includes('eBay Stores') &&
-                        !title.includes('Sponsored') &&
-                        !title.includes('Advertisement') &&
-                        link.includes('/itm/')) {
-                      
-                      // 簡略化された価格取得
-                      let price = '価格不明';
-                      const sCard = element.closest('.s-card') || element.closest('.s-item');
-                      
-                      if (sCard) {
-                        const priceElement = sCard.querySelector('.s-card__price, .s-item__price, [class*="price"]');
-                        if (priceElement && priceElement.textContent?.trim()) {
-                          price = priceElement.textContent.trim();
+                    for (let i = start; i < end; i++) {
+                      try {
+                        const element = productElements[i];
+                        if (!element) continue;
+                        
+                        const title = element.textContent?.trim();
+                        const link = element.closest('a')?.href;
+                        
+                        if (title && link && title !== '' && 
+                            !title.includes('Shop on eBay') && 
+                            !title.includes('Shop eBay') &&
+                            !title.includes('eBay Stores') &&
+                            !title.includes('Sponsored') &&
+                            !title.includes('Advertisement') &&
+                            link.includes('/itm/')) {
+                          
+                          // 簡略化された価格取得
+                          let price = '価格不明';
+                          const sCard = element.closest('.s-card') || element.closest('.s-item');
+                          
+                          if (sCard) {
+                            const priceElement = sCard.querySelector('.s-card__price, .s-item__price, [class*="price"]');
+                            if (priceElement && priceElement.textContent?.trim()) {
+                              price = priceElement.textContent.trim();
+                            }
+                          }
+                          
+                          // 商品状態を取得
+                          const conditionElement = sCard?.querySelector('.s-item__condition');
+                          const condition = conditionElement?.textContent?.trim();
+                          
+                          // 画像URLを取得
+                          const imageElement = sCard?.querySelector('.s-item__image img, .s-card__image img, img');
+                          const imageUrl = imageElement?.getAttribute('src');
+                          
+                          // itemIdをURLから抽出
+                          let itemId: string | undefined;
+                          const itemIdMatch = link.match(/\/itm\/(\d+)/);
+                          if (itemIdMatch) {
+                            itemId = itemIdMatch[1];
+                          }
+                          
+                          if (itemId) {
+                            products.push({
+                              title,
+                              price,
+                              url: link,
+                              itemId,
+                              condition,
+                              imageUrl: imageUrl || undefined,
+                              quantity: 1
+                            });
+                          }
                         }
-                      }
-                      
-                      // 商品状態を取得
-                      const conditionElement = sCard?.querySelector('.s-item__condition');
-                      const condition = conditionElement?.textContent?.trim();
-                      
-                      // 画像URLを取得
-                      const imageElement = sCard?.querySelector('.s-item__image img, .s-card__image img, img');
-                      const imageUrl = imageElement?.getAttribute('src');
-                      
-                      // itemIdをURLから抽出
-                      let itemId: string | undefined;
-                      const itemIdMatch = link.match(/\/itm\/(\d+)/);
-                      if (itemIdMatch) {
-                        itemId = itemIdMatch[1];
-                      }
-                      
-                      if (itemId) {
-                        products.push({
-                          title,
-                          price,
-                          url: link,
-                          itemId,
-                          condition,
-                          imageUrl: imageUrl || undefined,
-                          quantity: 1
-                        });
+                      } catch (elementError) {
+                        // 個別要素のエラーは無視
+                        console.warn(`要素 ${i} の処理でエラー:`, elementError);
                       }
                     }
-                  } catch (elementError) {
-                    // 個別要素のエラーは無視
-                    console.warn(`要素 ${i} の処理でエラー:`, elementError);
+                    
+                    return products;
+                  } catch (evaluateError) {
+                    console.error('page.evaluate内でエラー:', evaluateError);
+                    return [];
                   }
-                }
+                }, { start: startIndex, end: endIndex });
                 
-                return products;
-              }, { start: startIndex, end: endIndex });
-              
-              products.push(...batchProducts);
-              console.log(`✅ バッチ ${batch + 1} 完了: ${batchProducts.length}件の商品を取得`);
+                products.push(...batchProducts);
+                console.log(`✅ バッチ ${batch + 1} 完了: ${batchProducts.length}件の商品を取得`);
+                
+              } catch (batchError) {
+                console.error(`❌ バッチ ${batch + 1} 処理失敗:`, batchError);
+                if (batchError instanceof Error) {
+                  console.error(`📝 バッチエラー名: ${batchError.name}`);
+                  console.error(`📝 バッチエラーメッセージ: ${batchError.message}`);
+                }
+                // バッチエラーが発生しても処理を継続
+              }
               
               // バッチ間の待機
               if (batch < batches - 1) {
-                await new Promise(resolve => setTimeout(resolve, 100));
+                await new Promise(resolve => setTimeout(resolve, 500)); // 待機時間を増加
               }
             }
           }
