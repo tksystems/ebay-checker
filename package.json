@@ -20,6 +20,7 @@
     "ebay:store:observe": "tsx scripts/observe-store.ts",
     "ebay:debug:server": "tsx scripts/debug-server-environment.ts",
     "ebay:debug:access": "tsx scripts/debug-ebay-access.ts",
+    "ebay:debug:store": "tsx scripts/debug-store-access.ts",
     "ebay:test:crawler": "tsx scripts/test-crawler.ts",
     "ebay:crawl": "tsx scripts/test-crawler.ts",
     "verify:products": "tsx scripts/verify-products.ts",
