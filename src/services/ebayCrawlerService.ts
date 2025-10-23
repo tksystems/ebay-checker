@@ -271,14 +271,30 @@ export class EbayCrawlerService {
           await new Promise(resolve => setTimeout(resolve, 2000));
           
           // ページ読み込み後の状態確認
-          const finalUrl = await page.url();
-          const finalTitle = await page.title();
-          console.log(`📄 最終URL: ${finalUrl}`);
-          console.log(`📄 最終タイトル: ${finalTitle}`);
+          let finalUrl = '';
+          let finalTitle = '';
+          let readyState = '';
           
-          // ページの読み込み状態を確認
-          const readyState = await page.evaluate(() => document.readyState);
-          console.log(`📄 ページ読み込み状態: ${readyState}`);
+          try {
+            finalUrl = await page.url();
+            console.log(`📄 最終URL: ${finalUrl}`);
+          } catch (urlError) {
+            console.log(`⚠️  URL取得エラー: ${urlError instanceof Error ? urlError.message : String(urlError)}`);
+          }
+          
+          try {
+            finalTitle = await page.title();
+            console.log(`📄 最終タイトル: ${finalTitle}`);
+          } catch (titleError) {
+            console.log(`⚠️  タイトル取得エラー: ${titleError instanceof Error ? titleError.message : String(titleError)}`);
+          }
+          
+          try {
+            readyState = await page.evaluate(() => document.readyState);
+            console.log(`📄 ページ読み込み状態: ${readyState}`);
+          } catch (readyStateError) {
+            console.log(`⚠️  読み込み状態取得エラー: ${readyStateError instanceof Error ? readyStateError.message : String(readyStateError)}`);
+          }
           
           // eBayのチャレンジページを検出
           if (finalUrl.includes('splashui/challenge') || finalTitle.includes('Pardon Our Interruption')) {
@@ -321,14 +337,19 @@ export class EbayCrawlerService {
             console.log(`📝 セレクター待機エラーメッセージ: ${selectorError.message}`);
           }
           
-          // ページの状態を確認
+          // ページの状態を確認（安全に）
           try {
             const pageUrl = await page.url();
-            const pageTitle = await page.title();
             console.log(`📄 タイムアウト時のページURL: ${pageUrl}`);
+          } catch (urlError) {
+            console.log(`❌ URL確認エラー: ${urlError instanceof Error ? urlError.message : String(urlError)}`);
+          }
+          
+          try {
+            const pageTitle = await page.title();
             console.log(`📄 タイムアウト時のページタイトル: ${pageTitle}`);
-          } catch (pageError) {
-            console.log(`❌ ページ状態確認エラー: ${pageError instanceof Error ? pageError.message : String(pageError)}`);
+          } catch (titleError) {
+            console.log(`❌ タイトル確認エラー: ${titleError instanceof Error ? titleError.message : String(titleError)}`);
           }
         }
         
