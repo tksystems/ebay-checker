@@ -170,10 +170,45 @@ export class EbayCrawlerService {
       throw new Error('Playwright is not available. This service should only be used in CLI scripts.');
     }
 
-    const browser = await chromium.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
-    });
+    console.log(`🌐 ブラウザ起動開始: ${new Date().toISOString()}`);
+    const browserStartTime = Date.now();
+    
+    let browser: Awaited<ReturnType<typeof chromium.launch>> | null = null;
+    try {
+      // ブラウザ起動時のメモリ使用量を記録
+      const memoryBefore = process.memoryUsage();
+      console.log(`📊 ブラウザ起動前メモリ: RSS=${Math.round(memoryBefore.rss / 1024 / 1024)}MB, Heap=${Math.round(memoryBefore.heapUsed / 1024 / 1024)}MB`);
+
+      browser = await chromium.launch({
+        headless: true,
+        args: [
+          '--no-sandbox', 
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-gpu',
+          '--disable-web-security',
+          '--disable-features=VizDisplayCompositor',
+          '--memory-pressure-off',
+          '--max_old_space_size=4096'
+        ]
+      });
+
+      const browserLaunchTime = Date.now() - browserStartTime;
+      console.log(`✅ ブラウザ起動完了: ${browserLaunchTime}ms`);
+      
+      const memoryAfter = process.memoryUsage();
+      console.log(`📊 ブラウザ起動後メモリ: RSS=${Math.round(memoryAfter.rss / 1024 / 1024)}MB, Heap=${Math.round(memoryAfter.heapUsed / 1024 / 1024)}MB`);
+      console.log(`📊 メモリ増加量: RSS=${Math.round((memoryAfter.rss - memoryBefore.rss) / 1024 / 1024)}MB, Heap=${Math.round((memoryAfter.heapUsed - memoryBefore.heapUsed) / 1024 / 1024)}MB`);
+
+    } catch (browserError) {
+      console.error(`❌ ブラウザ起動失敗:`, browserError);
+      if (browserError instanceof Error) {
+        console.error(`📝 ブラウザ起動エラー名: ${browserError.name}`);
+        console.error(`📝 ブラウザ起動エラーメッセージ: ${browserError.message}`);
+        console.error(`📝 ブラウザ起動スタックトレース:`, browserError.stack);
+      }
+      throw browserError;
+    }
 
     try {
       const page = await browser.newPage();
@@ -202,14 +237,31 @@ export class EbayCrawlerService {
         const url = `https://www.ebay.com/sch/i.html?_dkr=1&iconV2Request=true&_blrs=recall_filtering&_ssn=f_sou_shop&store_cat=0&store_name=${shopName}&_ipg=240&_sop=15&_pgn=${currentPage}`;
         
         console.log(`ページ ${currentPage} を取得中: ${url}`);
-        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: this.PAGE_TIMEOUT });
+        console.log(`🕐 ページ取得開始時刻: ${new Date().toISOString()}`);
+        
+        try {
+          await page.goto(url, { waitUntil: 'domcontentloaded', timeout: this.PAGE_TIMEOUT });
+          console.log(`✅ ページ ${currentPage} の読み込み完了`);
+        } catch (gotoError) {
+          console.error(`❌ ページ ${currentPage} の読み込み失敗:`, gotoError);
+          if (gotoError instanceof Error) {
+            console.error(`📝 ページ読み込みエラー名: ${gotoError.name}`);
+            console.error(`📝 ページ読み込みエラーメッセージ: ${gotoError.message}`);
+          }
+          throw gotoError;
+        }
         
         // 商品要素が読み込まれるまで待機
         try {
+          console.log(`🔍 ページ ${currentPage} の商品要素を待機中...`);
           await page.waitForSelector('.s-card__title, .s-item__title', { timeout: this.ELEMENT_TIMEOUT });
-          console.log(`ページ ${currentPage} の商品要素の読み込み完了`);
-        } catch {
-          console.log(`ページ ${currentPage} の商品要素の読み込みタイムアウト、現在の要素で処理を続行`);
+          console.log(`✅ ページ ${currentPage} の商品要素の読み込み完了`);
+        } catch (selectorError) {
+          console.log(`⚠️  ページ ${currentPage} の商品要素の読み込みタイムアウト、現在の要素で処理を続行`);
+          if (selectorError instanceof Error) {
+            console.log(`📝 セレクター待機エラー名: ${selectorError.name}`);
+            console.log(`📝 セレクター待機エラーメッセージ: ${selectorError.message}`);
+          }
         }
         
         // 追加の待機時間（動的コンテンツの読み込み完了を待つ）
@@ -268,11 +320,15 @@ export class EbayCrawlerService {
           await new Promise(resolve => setTimeout(resolve, 1500));
         }
         
-        const products = await page.evaluate(() => {
-          const productElements = document.querySelectorAll('.s-card__title, .s-item__title');
-          const products: EbayProduct[] = [];
-          
-          productElements.forEach((element) => {
+        console.log(`🔍 ページ ${currentPage} の商品データを抽出中...`);
+        let products: EbayProduct[] = [];
+        
+        try {
+          products = await page.evaluate(() => {
+            const productElements = document.querySelectorAll('.s-card__title, .s-item__title');
+            const products: EbayProduct[] = [];
+            
+            productElements.forEach((element) => {
             const title = element.textContent?.trim();
             const link = element.closest('a')?.href;
             
@@ -345,8 +401,18 @@ export class EbayCrawlerService {
             }
           });
           
-          return products;
-        });
+            return products;
+          });
+          console.log(`✅ ページ ${currentPage} の商品データ抽出完了: ${products.length}件`);
+        } catch (evaluateError) {
+          console.error(`❌ ページ ${currentPage} の商品データ抽出失敗:`, evaluateError);
+          if (evaluateError instanceof Error) {
+            console.error(`📝 データ抽出エラー名: ${evaluateError.name}`);
+            console.error(`📝 データ抽出エラーメッセージ: ${evaluateError.message}`);
+            console.error(`📝 データ抽出スタックトレース:`, evaluateError.stack);
+          }
+          throw evaluateError;
+        }
 
         // 重複を除外して商品を追加
         const uniqueProducts = products.filter(product => {
@@ -404,8 +470,41 @@ export class EbayCrawlerService {
       console.log(`全ページ完了: 合計 ${allProducts.length}件の商品を取得しました`);
       return allProducts;
 
+    } catch (pageError) {
+      console.error(`❌ ページ処理中にエラー:`, pageError);
+      if (pageError instanceof Error) {
+        console.error(`📝 ページエラー名: ${pageError.name}`);
+        console.error(`📝 ページエラーメッセージ: ${pageError.message}`);
+        console.error(`📝 ページスタックトレース:`, pageError.stack);
+      }
+      throw pageError;
     } finally {
-      await browser.close();
+      if (browser) {
+        try {
+          console.log(`🔒 ブラウザ終了開始: ${new Date().toISOString()}`);
+          const browserCloseStartTime = Date.now();
+          
+          const memoryBeforeClose = process.memoryUsage();
+          console.log(`📊 ブラウザ終了前メモリ: RSS=${Math.round(memoryBeforeClose.rss / 1024 / 1024)}MB, Heap=${Math.round(memoryBeforeClose.heapUsed / 1024 / 1024)}MB`);
+          
+          await browser.close();
+          
+          const browserCloseTime = Date.now() - browserCloseStartTime;
+          console.log(`✅ ブラウザ終了完了: ${browserCloseTime}ms`);
+          
+          const memoryAfterClose = process.memoryUsage();
+          console.log(`📊 ブラウザ終了後メモリ: RSS=${Math.round(memoryAfterClose.rss / 1024 / 1024)}MB, Heap=${Math.round(memoryAfterClose.heapUsed / 1024 / 1024)}MB`);
+          console.log(`📊 メモリ解放量: RSS=${Math.round((memoryBeforeClose.rss - memoryAfterClose.rss) / 1024 / 1024)}MB, Heap=${Math.round((memoryBeforeClose.heapUsed - memoryAfterClose.heapUsed) / 1024 / 1024)}MB`);
+          
+        } catch (closeError) {
+          console.error(`❌ ブラウザ終了失敗:`, closeError);
+          if (closeError instanceof Error) {
+            console.error(`📝 ブラウザ終了エラー名: ${closeError.name}`);
+            console.error(`📝 ブラウザ終了エラーメッセージ: ${closeError.message}`);
+            console.error(`📝 ブラウザ終了スタックトレース:`, closeError.stack);
+          }
+        }
+      }
     }
   }
 

@@ -18,6 +18,7 @@
     "test:e2e:headed": "playwright test --headed",
     "test:all": "npm run test && npm run test:e2e",
     "ebay:store:observe": "tsx scripts/observe-store.ts",
+    "ebay:debug:server": "tsx scripts/debug-server-environment.ts",
     "ebay:test:crawler": "tsx scripts/test-crawler.ts",
     "ebay:crawl": "tsx scripts/test-crawler.ts",
     "verify:products": "tsx scripts/verify-products.ts",
