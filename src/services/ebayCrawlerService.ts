@@ -273,12 +273,43 @@ export class EbayCrawlerService {
         let lastProductCount = 0;
         
         for (let i = 0; i < 10; i++) {
-          const currentCount = await page.evaluate(() => {
-            const elements = document.querySelectorAll('.s-card__title, .s-item__title');
-            let validCount = 0;
-            elements.forEach((element) => {
-              const title = element.textContent?.trim();
-              const link = element.closest('a')?.href;
+          // page.evaluateを排除してPlaywrightネイティブAPIを使用
+          const elements = await page.$$('.s-card__title, .s-item__title');
+          let validCount = 0;
+          
+          for (const element of elements) {
+            try {
+              const title = await element.textContent();
+              if (!title || title.trim() === '') continue;
+              
+              // リンクを検索（複数の方法を試行）
+              let link = null;
+              
+              // 方法1: 要素内のリンクを検索
+              const linkElement = await element.$('a');
+              if (linkElement) {
+                link = await linkElement.getAttribute('href');
+              }
+              
+              // 方法2: 親要素のリンクを検索
+              if (!link) {
+                const parentElement = await element.$('xpath=ancestor::*[contains(@class, "s-card") or contains(@class, "s-item")]');
+                if (parentElement) {
+                  const parentLinkElement = await parentElement.$('a');
+                  if (parentLinkElement) {
+                    link = await parentLinkElement.getAttribute('href');
+                  }
+                }
+              }
+              
+              // 方法3: 祖先要素のリンクを検索
+              if (!link) {
+                const closestLink = await element.$('xpath=ancestor::a');
+                if (closestLink) {
+                  link = await closestLink.getAttribute('href');
+                }
+              }
+              
               if (title && link && title !== '' && 
                   !title.includes('Shop on eBay') && 
                   !title.includes('Shop eBay') &&
@@ -288,9 +319,13 @@ export class EbayCrawlerService {
                   link.includes('/itm/')) {
                 validCount++;
               }
-            });
-            return validCount;
-          });
+            } catch (error) {
+              // 個別要素のエラーは無視
+              continue;
+            }
+          }
+          
+          const currentCount = validCount;
           
           if (currentCount > maxProductCount) {
             maxProductCount = currentCount;
@@ -548,25 +583,32 @@ export class EbayCrawlerService {
         console.log(`ページ ${currentPage}: ${products.length}件の商品を取得 (重複除外後: ${uniqueProducts.length}件)`);
         allProducts.push(...uniqueProducts);
 
-        // 次のページがあるかチェック
-        const paginationInfo = await page.evaluate(() => {
-          const nextButton1 = document.querySelector('.pagination__next');
-          const nextButton2 = document.querySelector('.pagination__next:not(.pagination__next--disabled)');
-          const nextButton3 = document.querySelector('a[aria-label="Next page"]');
-          const nextButton4 = document.querySelector('.pagination__next[href*="_pgn="]');
-          
-          return {
-            nextButton1: !!nextButton1,
-            nextButton1Disabled: nextButton1 ? nextButton1.classList.contains('pagination__next--disabled') : false,
-            nextButton2: !!nextButton2,
-            nextButton3: !!nextButton3,
-            nextButton4: !!nextButton4,
-            hasNext: !!(nextButton1 && !nextButton1.classList.contains('pagination__next--disabled')) ||
-                     !!(nextButton2) ||
-                     !!(nextButton3) ||
-                     !!(nextButton4)
-          };
-        });
+        // 次のページがあるかチェック（PlaywrightネイティブAPIを使用）
+        console.log(`🔍 ページ ${currentPage}: 次ページボタンを検索中...`);
+        
+        const nextButton1 = await page.$('.pagination__next');
+        const nextButton2 = await page.$('.pagination__next:not(.pagination__next--disabled)');
+        const nextButton3 = await page.$('a[aria-label="Next page"]');
+        const nextButton4 = await page.$('.pagination__next[href*="_pgn="]');
+        
+        // クラス名の確認（evaluateを使わずに）
+        let nextButton1Disabled = false;
+        if (nextButton1) {
+          const className = await nextButton1.getAttribute('class');
+          nextButton1Disabled = className ? className.includes('pagination__next--disabled') : false;
+        }
+        
+        const paginationInfo = {
+          nextButton1: !!nextButton1,
+          nextButton1Disabled,
+          nextButton2: !!nextButton2,
+          nextButton3: !!nextButton3,
+          nextButton4: !!nextButton4,
+          hasNext: !!(nextButton1 && !nextButton1Disabled) ||
+                   !!(nextButton2) ||
+                   !!(nextButton3) ||
+                   !!(nextButton4)
+        };
         
         const nextPageExists = paginationInfo.hasNext;
         const isLastPage = products.length < 240;
