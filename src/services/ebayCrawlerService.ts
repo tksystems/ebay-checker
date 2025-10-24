@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { ProductStatus, CrawlLogStatus } from "@prisma/client";
+import { getProxyConfig } from "../config/proxy";
 
 // サーバーサイドでのみPlaywrightをインポート
 let chromium: typeof import('playwright-extra').chromium | undefined;
@@ -173,13 +174,20 @@ export class EbayCrawlerService {
     console.log(`🌐 ブラウザ起動開始: ${new Date().toISOString()}`);
     const browserStartTime = Date.now();
     
+    // プロキシ設定を取得
+    const proxyConfig = getProxyConfig();
+    console.log(`🔧 プロキシ設定: ${proxyConfig.enabled ? '有効' : '無効'}`);
+    if (proxyConfig.enabled) {
+      console.log(`🌐 プロキシ: ${proxyConfig.host}:${proxyConfig.port} (${proxyConfig.type})`);
+    }
+    
     let browser: Awaited<ReturnType<typeof chromium.launch>> | null = null;
     try {
       // ブラウザ起動時のメモリ使用量を記録
       const memoryBefore = process.memoryUsage();
       console.log(`📊 ブラウザ起動前メモリ: RSS=${Math.round(memoryBefore.rss / 1024 / 1024)}MB, Heap=${Math.round(memoryBefore.heapUsed / 1024 / 1024)}MB`);
 
-      browser = await chromium.launch({
+      const launchOptions: Parameters<typeof chromium.launch>[0] = {
         headless: true,
         args: [
           '--no-sandbox', 
@@ -195,7 +203,27 @@ export class EbayCrawlerService {
           '--memory-pressure-off',
           '--max_old_space_size=4096'
         ]
-      });
+      };
+
+      // プロキシ設定を追加
+      if (proxyConfig.enabled) {
+        if (proxyConfig.type === 'http') {
+          launchOptions.proxy = {
+            server: `http://${proxyConfig.host}:${proxyConfig.port}`,
+            username: proxyConfig.username,
+            password: proxyConfig.password
+          };
+        } else if (proxyConfig.type === 'socks5') {
+          launchOptions.proxy = {
+            server: `socks5://${proxyConfig.host}:${proxyConfig.port}`,
+            username: proxyConfig.username,
+            password: proxyConfig.password
+          };
+        }
+        console.log(`🌐 プロキシ設定完了: ${proxyConfig.type}://${proxyConfig.host}:${proxyConfig.port}`);
+      }
+
+      browser = await chromium.launch(launchOptions);
 
       const browserLaunchTime = Date.now() - browserStartTime;
       console.log(`✅ ブラウザ起動完了: ${browserLaunchTime}ms`);
@@ -458,7 +486,7 @@ export class EbayCrawlerService {
                   link.includes('/itm/')) {
                 validCount++;
               }
-            } catch (error) {
+            } catch {
               // 個別要素のエラーは無視
               continue;
             }
