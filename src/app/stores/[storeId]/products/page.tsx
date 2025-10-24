@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, use, useCallback } from 'react'
+import Link from 'next/link'
 import { ArrowLeftIcon, EyeIcon, CurrencyDollarIcon, ClockIcon } from '@heroicons/react/24/outline'
 
 interface Product {
@@ -296,13 +297,13 @@ export default function ProductsPage({ params }: { params: Promise<{ storeId: st
                         }
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        <button
-                          onClick={() => window.location.href = `/stores/${resolvedParams.storeId}/products/${product.id}`}
-                          className="inline-flex items-center px-3 py-1 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50"
+                        <Link
+                          href={`/stores/${resolvedParams.storeId}/products/${product.id}`}
+                          className="inline-flex items-center px-3 py-1 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 active:bg-gray-100 active:scale-95 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 transition-all duration-150"
                         >
                           <EyeIcon className="h-3 w-3 mr-1" />
                           詳細
-                        </button>
+                        </Link>
                       </td>
                     </tr>
                   ))}

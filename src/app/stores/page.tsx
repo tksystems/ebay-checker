@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import Link from 'next/link'
 import { PlusIcon, PlayIcon, EyeIcon, HeartIcon, XMarkIcon } from '@heroicons/react/24/outline'
 
 interface Store {
@@ -128,10 +129,6 @@ export default function StoresPage() {
     }
   }
 
-  // 商品一覧ページに遷移
-  const viewProducts = (storeId: string) => {
-    window.location.href = `/stores/${storeId}/products`
-  }
 
   // ストアを購読
   const subscribeToStore = async (storeId: string, storeName: string) => {
@@ -312,34 +309,13 @@ export default function StoresPage() {
                         )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                        <button
-                          onClick={() => crawlStore(store.id, store.storeName)}
-                          disabled={crawling === store.id}
-                          className={`inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded text-white ${
-                            crawling === store.id
-                              ? 'bg-gray-400 cursor-not-allowed'
-                              : 'bg-green-600 hover:bg-green-700'
-                          }`}
-                        >
-                          {crawling === store.id ? (
-                            <>
-                              <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white mr-1"></div>
-                              実行中
-                            </>
-                          ) : (
-                            <>
-                              <PlayIcon className="h-3 w-3 mr-1" />
-                              クロール
-                            </>
-                          )}
-                        </button>
-                        <button
-                          onClick={() => viewProducts(store.id)}
-                          className="inline-flex items-center px-3 py-1 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50"
+                        <Link
+                          href={`/stores/${store.id}/products`}
+                          className="inline-flex items-center px-3 py-1 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 active:bg-gray-100 active:scale-95 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 transition-all duration-150"
                         >
                           <EyeIcon className="h-3 w-3 mr-1" />
                           商品一覧
-                        </button>
+                        </Link>
                       </td>
                     </tr>
                   ))}
@@ -412,7 +388,7 @@ export default function StoresPage() {
                     value={newStoreName}
                     onChange={(e) => setNewStoreName(e.target.value)}
                     placeholder="例: fsoushop"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 placeholder-gray-500"
                     required
                   />
                 </div>
@@ -426,7 +402,7 @@ export default function StoresPage() {
                     value={newStoreUrl}
                     onChange={(e) => setNewStoreUrl(e.target.value)}
                     placeholder="例: https://www.ebay.com/str/fsoushop"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 placeholder-gray-500"
                   />
                 </div>
                 <div className="flex justify-end space-x-3">
