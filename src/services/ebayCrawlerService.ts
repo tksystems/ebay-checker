@@ -839,7 +839,7 @@ export class EbayCrawlerService {
   }> {
     let productsNew = 0;
     let productsUpdated = 0;
-    const productsSold = 0;
+    let productsSold = 0;
 
     // 直前のクロール（最大30分前）の商品を取得（比較用）
     const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
@@ -919,27 +919,21 @@ export class EbayCrawlerService {
     }
 
     // 一覧から消えた商品を検出（検証待ちとしてマーク）
-    // デバッグ中は一時的に無効化
-    console.log(`🔍 デバッグ中: 商品の「売れた」判定を一時的に無効化しています`);
+    console.log(`🔍 商品の「売れた」判定を実行中...`);
     console.log(`📊 既存商品数: ${existingProducts.length}件, 現在の商品数: ${products.length}件`);
     
-    // デバッグ用: 既存商品と現在の商品の比較
+    // 既存商品と現在の商品の比較
     const existingItemIds = new Set(existingProducts.map(p => p.ebayItemId));
-    const currentItemIdsSet = new Set(products.map(p => p.itemId));
+    const currentItemIds = new Set(products.map(p => p.itemId));
     
     console.log(`📊 既存商品ID数: ${existingItemIds.size}件`);
-    console.log(`📊 現在商品ID数: ${currentItemIdsSet.size}件`);
+    console.log(`📊 現在商品ID数: ${currentItemIds.size}件`);
     
     // 重複チェック
-    const commonIds = new Set([...existingItemIds].filter(id => currentItemIdsSet.has(id)));
+    const commonIds = new Set([...existingItemIds].filter(id => currentItemIds.has(id)));
     console.log(`📊 共通商品ID数: ${commonIds.size}件`);
     
-    // 消えた商品の数（デバッグ用）
-    const removedCount = existingItemIds.size - commonIds.size;
-    console.log(`📊 消えた商品数: ${removedCount}件 (実際の処理は無効化中)`);
-    
-    // 実際の処理は一時的にコメントアウト
-    /*
+    // 消えた商品の処理
     for (const existingProduct of existingProducts) {
       if (!currentItemIds.has(existingProduct.ebayItemId)) {
         console.log(`🔍 商品が一覧から消えました: ${existingProduct.title} (${existingProduct.ebayItemId})`);
@@ -949,14 +943,15 @@ export class EbayCrawlerService {
           where: { id: existingProduct.id },
           data: {
             status: ProductStatus.REMOVED, // 一時的にREMOVEDステータス
-            verificationStatus: VerificationStatus.PENDING, // 検証待ち
+            verificationStatus: 'PENDING', // 検証待ち
             lastSeenAt: new Date(),
           }
         });
         productsSold++; // 統計上は「売れた」としてカウント（後で検証により調整される可能性）
       }
     }
-    */
+    
+    console.log(`📊 消えた商品数: ${productsSold}件 (検証待ちとしてマーク済み)`);
 
     return {
       productsFound: products.length,
