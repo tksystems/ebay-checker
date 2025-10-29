@@ -52,6 +52,7 @@ export class EbayCrawlerService {
   private readonly MAX_RETRIES = 3;
   private readonly PAGE_TIMEOUT = 60000;
   private readonly ELEMENT_TIMEOUT = 15000;
+  // 並列化防止フラグ（暫定削除：インデントエラーのため）
 
   /**
    * ストアの全商品をクローリング
@@ -166,25 +167,25 @@ export class EbayCrawlerService {
   /**
    * 全ページの商品一覧を取得（ページング対応）
    */
-  private async getAllProducts(shopName: string): Promise<EbayProduct[]> {
+  async getAllProducts(shopName: string): Promise<EbayProduct[]> {
     if (!chromium) {
       throw new Error('Playwright is not available. This service should only be used in CLI scripts.');
     }
 
     console.log(`🌐 ブラウザ起動開始: ${new Date().toISOString()}`);
     const browserStartTime = Date.now();
-    
-    // プロキシ設定を取得
-    const proxyConfig = getProxyConfig();
-    console.log(`🔧 プロキシ設定: ${proxyConfig.enabled ? '有効' : '無効'}`);
-    if (proxyConfig.enabled) {
-      console.log(`🌐 プロキシ: ${proxyConfig.host}:${proxyConfig.port} (${proxyConfig.type})`);
-    }
-    
-    let browser: Awaited<ReturnType<typeof chromium.launch>> | null = null;
-    try {
-      // ブラウザ起動時のメモリ使用量を記録
-      const memoryBefore = process.memoryUsage();
+      
+      // プロキシ設定を取得
+      const proxyConfig = getProxyConfig();
+      console.log(`🔧 プロキシ設定: ${proxyConfig.enabled ? '有効' : '無効'}`);
+      if (proxyConfig.enabled) {
+        console.log(`🌐 プロキシ: ${proxyConfig.host}:${proxyConfig.port} (${proxyConfig.type})`);
+      }
+      
+      let browser: Awaited<ReturnType<typeof chromium.launch>> | null = null;
+      try {
+        // ブラウザ起動時のメモリ使用量を記録
+        const memoryBefore = process.memoryUsage();
       console.log(`📊 ブラウザ起動前メモリ: RSS=${Math.round(memoryBefore.rss / 1024 / 1024)}MB, Heap=${Math.round(memoryBefore.heapUsed / 1024 / 1024)}MB`);
 
       const launchOptions: Parameters<typeof chromium.launch>[0] = {
@@ -285,7 +286,7 @@ export class EbayCrawlerService {
       let hasNextPage = true;
 
       while (hasNextPage) {
-        const url = `https://www.ebay.com/sch/i.html?_dkr=1&iconV2Request=true&_blrs=recall_filtering&_ssn=f_sou_shop&store_cat=0&store_name=${shopName}&_ipg=240&_sop=15&_pgn=${currentPage}`;
+        const url = `https://www.ebay.com/sch/i.html?_dkr=1&iconV2Request=true&_blrs=recall_filtering&_ssn=${shopName}&store_cat=0&store_name=${shopName}&_ipg=240&_sop=15&_pgn=${currentPage}`;
         
         console.log(`ページ ${currentPage} を取得中: ${url}`);
         console.log(`🕐 ページ取得開始時刻: ${new Date().toISOString()}`);

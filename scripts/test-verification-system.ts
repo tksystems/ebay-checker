@@ -56,8 +56,7 @@ async function testVerificationStats() {
     console.log(`   未検証: ${stats.pending}件`);
     console.log(`   検証済み: ${stats.verified}件`);
     console.log(`   売上確認済み: ${stats.soldConfirmed}件`);
-    console.log(`   在庫切れ: ${stats.outOfStock}件`);
-    console.log(`   出品終了: ${stats.listingEnded}件`);
+    console.log(`   削除された商品: ${stats.deleted}件（売れていませんでした）`);
     console.log(`   エラー: ${stats.error}件`);
     
     return true;

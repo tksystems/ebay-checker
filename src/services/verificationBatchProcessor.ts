@@ -26,9 +26,7 @@ export class VerificationBatchProcessor {
     failed: number;
     summary: {
       sold: number;
-      outOfStock: number;
-      listingEnded: number;
-      verified: number;
+      deleted: number; // 削除された商品数（売れていなかった商品）
       errors: number;
     };
   }> {
@@ -42,9 +40,7 @@ export class VerificationBatchProcessor {
     let failed = 0;
     const summary = {
       sold: 0,
-      outOfStock: 0,
-      listingEnded: 0,
-      verified: 0,
+      deleted: 0, // 削除された商品数（売れていなかった商品）
       errors: 0
     };
 
@@ -91,12 +87,9 @@ export class VerificationBatchProcessor {
           // 検証結果に基づいて集計
           if (result.verificationResult.isSold) {
             summary.sold++;
-          } else if (result.verificationResult.isOutOfStock) {
-            summary.outOfStock++;
-          } else if (result.verificationResult.isListingEnded) {
-            summary.listingEnded++;
           } else {
-            summary.verified++;
+            // 売れていない場合は削除されたため、削除カテゴリとして扱う
+            summary.deleted++;
           }
         } else {
           failed++;
@@ -119,10 +112,8 @@ export class VerificationBatchProcessor {
     console.log(`   総処理数: ${totalProcessed}件`);
     console.log(`   成功: ${successful}件`);
     console.log(`   失敗: ${failed}件`);
-    console.log(`   売上確認: ${summary.sold}件`);
-    console.log(`   在庫切れ: ${summary.outOfStock}件`);
-    console.log(`   出品終了: ${summary.listingEnded}件`);
-    console.log(`   検証済み: ${summary.verified}件`);
+    console.log(`   売上確認済み: ${summary.sold}件`);
+    console.log(`   削除された商品: ${summary.deleted}件（売れていませんでした）`);
     console.log(`   エラー: ${summary.errors}件`);
 
     return {
@@ -203,8 +194,7 @@ export class VerificationBatchProcessor {
     console.log(`   未検証: ${stats.pending}件`);
     console.log(`   検証済み: ${stats.verified}件`);
     console.log(`   売上確認済み: ${stats.soldConfirmed}件`);
-    console.log(`   在庫切れ: ${stats.outOfStock}件`);
-    console.log(`   出品終了: ${stats.listingEnded}件`);
+    console.log(`   削除された商品: ${stats.deleted}件（売れていませんでした）`);
     console.log(`   エラー: ${stats.error}件`);
   }
 

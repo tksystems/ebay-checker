@@ -60,7 +60,7 @@ export class EbayDetailVerificationService {
   async verifyAndUpdateProduct(productId: string): Promise<{
     success: boolean;
     verificationResult?: EbayVerificationResult;
-    updatedProduct?: Product;
+    updatedProduct?: Product | null;
     error?: string;
   }> {
     try {
@@ -97,44 +97,42 @@ export class EbayDetailVerificationService {
         };
       }
 
-      // 検証結果に基づいてステータスを決定
-      let newVerificationStatus: VerificationStatus;
-      let newProductStatus = product.status;
-
+      // 検証結果に基づいて処理を決定
       if (verificationResult.isSold) {
-        newVerificationStatus = VerificationStatus.SOLD_CONFIRMED;
-        newProductStatus = ProductStatus.SOLD;
-      } else if (verificationResult.isOutOfStock) {
-        newVerificationStatus = VerificationStatus.OUT_OF_STOCK;
-        newProductStatus = ProductStatus.ACTIVE; // 在庫切れでも商品は存在する
-      } else if (verificationResult.isListingEnded) {
-        newVerificationStatus = VerificationStatus.LISTING_ENDED;
-        newProductStatus = ProductStatus.ENDED;
+        // 売れたことが確定した場合：SOLDステータスに更新
+        const updatedProduct = await prisma.product.update({
+          where: { id: productId },
+          data: {
+            verificationStatus: VerificationStatus.SOLD_CONFIRMED,
+            status: ProductStatus.SOLD,
+            lastSoldQuantity: verificationResult.productDetails?.soldQuantity,
+            lastAvailableQuantity: verificationResult.productDetails?.availableQuantity,
+            lastRemainingQuantity: verificationResult.productDetails?.remainingQuantity,
+            lastVerifiedAt: new Date(),
+            verificationError: null,
+            soldAt: new Date()
+          }
+        });
+
+        return {
+          success: true,
+          verificationResult,
+          updatedProduct
+        };
       } else {
-        newVerificationStatus = VerificationStatus.VERIFIED;
-        newProductStatus = ProductStatus.ACTIVE;
+        // 売れていない場合：DBから削除
+        console.log(`🗑️  商品「${product.title}」は売れていませんでした。DBから削除します。`);
+        
+        await prisma.product.delete({
+          where: { id: productId }
+        });
+
+        return {
+          success: true,
+          verificationResult,
+          updatedProduct: null // 削除されたためnull
+        };
       }
-
-      // 商品情報を更新
-      const updatedProduct = await prisma.product.update({
-        where: { id: productId },
-        data: {
-          verificationStatus: newVerificationStatus,
-          lastSoldQuantity: verificationResult.productDetails?.soldQuantity,
-          lastAvailableQuantity: verificationResult.productDetails?.availableQuantity,
-          lastRemainingQuantity: verificationResult.productDetails?.remainingQuantity,
-          lastVerifiedAt: new Date(),
-          verificationError: null,
-          status: newProductStatus,
-          soldAt: verificationResult.isSold ? new Date() : product.soldAt
-        }
-      });
-
-      return {
-        success: true,
-        verificationResult,
-        updatedProduct
-      };
     } catch (error) {
       return {
         success: false,
@@ -236,8 +234,7 @@ export class EbayDetailVerificationService {
     pending: number;
     verified: number;
     soldConfirmed: number;
-    outOfStock: number;
-    listingEnded: number;
+    deleted: number; // 削除された商品数
     error: number;
   }> {
     const stats = await prisma.product.groupBy({
@@ -252,8 +249,7 @@ export class EbayDetailVerificationService {
       pending: 0,
       verified: 0,
       soldConfirmed: 0,
-      outOfStock: 0,
-      listingEnded: 0,
+      deleted: 0, // 削除された商品数（実際にはDBに存在しないので常に0）
       error: 0
     };
 
@@ -271,12 +267,8 @@ export class EbayDetailVerificationService {
         case VerificationStatus.SOLD_CONFIRMED:
           result.soldConfirmed = count;
           break;
-        case VerificationStatus.OUT_OF_STOCK:
-          result.outOfStock = count;
-          break;
-        case VerificationStatus.LISTING_ENDED:
-          result.listingEnded = count;
-          break;
+        // OUT_OF_STOCK と LISTING_ENDED は削除されるため、deleted として扱わない
+        // これらのステータスは新しい仕様では存在しない
         case VerificationStatus.ERROR:
           result.error = count;
           break;

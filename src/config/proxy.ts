@@ -14,6 +14,6 @@ export const getProxyConfig = (): ProxyConfig => {
     username: process.env.PROXY_USERNAME || 'xxxxx',
     password: process.env.PROXY_PASSWORD || 'xxxxx',
     type: (process.env.PROXY_TYPE as 'http' | 'socks5') || 'http',
-    enabled: process.env.USE_PROXY === 'true' || true, // デフォルトで有効
+    enabled: process.env.USE_PROXY === 'true', // デフォルトで無効
   };
 };
