@@ -6,9 +6,16 @@
  */
 
 import { PrismaClient, NotificationType, NotificationStatus } from '@prisma/client';
-import { ebayCrawlerService, CrawlResult } from '../src/services/ebayCrawlerService';
+import { ebayCrawlerService, CrawlResult, EbayProduct } from '../src/services/ebayCrawlerService';
 
 const prisma = new PrismaClient();
+
+// メモリベースの商品比較システム
+interface StoreProductCache {
+  storeId: string;
+  products: Map<string, EbayProduct>; // itemId -> EbayProduct
+  lastUpdated: Date;
+}
 
 interface StoreWithCrawlStatus {
   id: string;
@@ -30,6 +37,8 @@ class StoreObserver {
   private intervalId: NodeJS.Timeout | null = null;
   private readonly serverId: string;
   private resourceMonitorInterval: NodeJS.Timeout | null = null;
+  private storeProductCache: Map<string, StoreProductCache> = new Map();
+  private isProcessingStore: boolean = false; // ストア処理中のフラグ
 
   constructor() {
     this.serverId = process.env.SERVER_ID || `server-${Date.now()}`;
@@ -121,8 +130,29 @@ class StoreObserver {
 
       console.log(`監視対象ストア数: ${stores.length}件`);
 
+      // ストア毎に順次処理（並列化を完全に防ぐ）
       for (const store of stores) {
-        await this.observeStore(store);
+        // 既に他のストアが処理中の場合はスキップ
+        if (this.isProcessingStore) {
+          console.log(`⏭️  ストア「${store.storeName}」は他のストアが処理中のためスキップします`);
+          continue;
+        }
+
+        console.log(`🔄 ストア「${store.storeName}」の処理を開始します...`);
+        this.isProcessingStore = true;
+        
+        try {
+          await this.observeStore(store);
+          console.log(`✅ ストア「${store.storeName}」の処理が完了しました`);
+        } catch (error) {
+          console.error(`❌ ストア「${store.storeName}」の処理中にエラー:`, error);
+        } finally {
+          this.isProcessingStore = false;
+        }
+        
+        // ストア間の待機時間を追加（メモリ解放のため）
+        console.log(`⏳ 次のストア処理まで10秒待機中...`);
+        await new Promise(resolve => setTimeout(resolve, 10000));
       }
 
       console.log(`✅ 監視実行完了: ${new Date().toISOString()}`);
@@ -198,7 +228,8 @@ class StoreObserver {
       // システム情報をログ出力
       console.log(`🖥️  システム情報: Node.js ${process.version}, プラットフォーム: ${process.platform}, アーキテクチャ: ${process.arch}`);
       
-      const result = await ebayCrawlerService.crawlStore(store.id);
+      // 新しいメモリベースの比較システムを使用
+      const result = await this.crawlStoreWithMemoryComparison(store.id);
       
       const endTime = Date.now();
       const duration = endTime - startTime;
@@ -269,6 +300,307 @@ class StoreObserver {
     if (memoryUsage.heapUsed > 512 * 1024 * 1024) { // 512MB
       console.warn(`⚠️  ヒープ使用量が高いです: ${Math.round(memoryUsage.heapUsed / 1024 / 1024)}MB`);
     }
+  }
+
+  /**
+   * メモリベースの商品比較システムでストアをクロール
+   */
+  private async crawlStoreWithMemoryComparison(storeId: string): Promise<CrawlResult> {
+    const startTime = Date.now();
+    
+    try {
+      // ストア情報を取得
+      const store = await prisma.store.findUnique({
+        where: { id: storeId }
+      });
+
+      if (!store) {
+        throw new Error(`Store not found: ${storeId}`);
+      }
+
+      if (!store.isActive) {
+        throw new Error(`Store is inactive: ${store.storeName}`);
+      }
+
+      // クロール状態を更新
+      await this.updateCrawlStatus(store.id, true);
+
+      try {
+        // 全ページの商品を取得
+        const currentProducts = await this.getAllProducts(store.storeName);
+        
+        // メモリキャッシュをチェック
+        const cache = this.storeProductCache.get(storeId);
+        
+        let result: {
+          productsFound: number;
+          productsNew: number;
+          productsUpdated: number;
+          productsSold: number;
+        };
+
+        if (!cache) {
+          // 初回クロール：商品をメモリに保存（DBには保存しない）
+          console.log(`🆕 初回クロール: 商品をメモリに保存します (${currentProducts.length}件)`);
+          
+          const productMap = new Map<string, EbayProduct>();
+          currentProducts.forEach(product => {
+            productMap.set(product.itemId, product);
+          });
+          
+          this.storeProductCache.set(storeId, {
+            storeId,
+            products: productMap,
+            lastUpdated: new Date()
+          });
+          
+          result = {
+            productsFound: currentProducts.length,
+            productsNew: 0,
+            productsUpdated: 0,
+            productsSold: 0
+          };
+          
+        } else {
+          // 2回目以降：メモリの商品一覧と比較
+          console.log(`🔍 2回目以降のクロール: メモリの商品一覧と比較します`);
+          console.log(`📊 メモリ内商品数: ${cache.products.size}件, 現在の商品数: ${currentProducts.length}件`);
+          
+          result = await this.compareWithMemoryCache(storeId, currentProducts, cache);
+        }
+
+        // ストアの最終クロール時刻を更新
+        await prisma.store.update({
+          where: { id: store.id },
+          data: { lastCrawledAt: new Date() }
+        });
+
+        return {
+          success: true,
+          productsFound: result.productsFound,
+          productsNew: result.productsNew,
+          productsUpdated: result.productsUpdated,
+          productsSold: result.productsSold,
+          duration: Date.now() - startTime
+        };
+
+      } finally {
+        // クロール状態を更新
+        await this.updateCrawlStatus(store.id, false);
+      }
+
+    } catch (error) {
+      return {
+        success: false,
+        productsFound: 0,
+        productsNew: 0,
+        productsUpdated: 0,
+        productsSold: 0,
+        errorMessage: error instanceof Error ? error.message : 'Unknown error',
+        duration: Date.now() - startTime
+      };
+    }
+  }
+
+  /**
+   * メモリキャッシュと現在の商品を比較
+   */
+  private async compareWithMemoryCache(
+    storeId: string, 
+    currentProducts: EbayProduct[], 
+    cache: StoreProductCache
+  ): Promise<{
+    productsFound: number;
+    productsNew: number;
+    productsUpdated: number;
+    productsSold: number;
+  }> {
+    let productsNew = 0;
+    let productsUpdated = 0;
+    let productsSold = 0;
+
+    // 現在の商品IDセット
+    const currentItemIds = new Set(currentProducts.map(p => p.itemId));
+    const cachedItemIds = new Set(cache.products.keys());
+
+    console.log(`📊 比較対象: メモリ内 ${cachedItemIds.size}件 vs 現在 ${currentItemIds.size}件`);
+
+    // 新商品を検出（現在にあるがメモリにない商品）
+    const newItemIds = new Set([...currentItemIds].filter(id => !cachedItemIds.has(id)));
+    console.log(`🆕 新商品: ${newItemIds.size}件`);
+
+    // 消えた商品を検出（メモリにあるが現在にない商品）
+    const removedItemIds = new Set([...cachedItemIds].filter(id => !currentItemIds.has(id)));
+    console.log(`❌ 消えた商品: ${removedItemIds.size}件`);
+
+    // 消えた商品のみをDBに保存
+    if (removedItemIds.size > 0) {
+      console.log(`💾 消えた商品をDBに保存します...`);
+      
+      // 消えた商品をDBに保存（検証待ちとしてマーク）
+      for (const itemId of removedItemIds) {
+        const cachedProduct = cache.products.get(itemId);
+        if (cachedProduct) {
+          await this.saveRemovedProductToDatabase(storeId, cachedProduct);
+          productsSold++;
+        }
+      }
+    }
+
+    // 新商品は検出するがDBには保存しない（メモリのみで管理）
+    if (newItemIds.size > 0) {
+      console.log(`🆕 新商品 ${newItemIds.size}件を検出しました（DBには保存しません）`);
+      productsNew = newItemIds.size; // 統計用のカウントのみ
+    }
+
+    // 変化があった場合（新商品または消えた商品）はベースラインを更新
+    if (newItemIds.size > 0 || removedItemIds.size > 0) {
+      console.log(`🔄 ベースラインを更新します...`);
+      const newProductMap = new Map<string, EbayProduct>();
+      currentProducts.forEach(product => {
+        newProductMap.set(product.itemId, product);
+      });
+      
+      this.storeProductCache.set(storeId, {
+        storeId,
+        products: newProductMap,
+        lastUpdated: new Date()
+      });
+      
+      console.log(`✅ ベースライン更新完了: ${newProductMap.size}件の商品をメモリに保存`);
+    } else {
+      console.log(`✅ 変化なし: メモリの商品一覧を更新します`);
+      
+      // 変化がなくても、メモリの商品一覧を更新（最新の状態を保持）
+      const newProductMap = new Map<string, EbayProduct>();
+      currentProducts.forEach(product => {
+        newProductMap.set(product.itemId, product);
+      });
+      
+      this.storeProductCache.set(storeId, {
+        storeId,
+        products: newProductMap,
+        lastUpdated: new Date()
+      });
+    }
+
+    return {
+      productsFound: currentProducts.length,
+      productsNew,
+      productsUpdated,
+      productsSold
+    };
+  }
+
+
+  /**
+   * 消えた商品をデータベースに保存（検証待ちとしてマーク）
+   */
+  private async saveRemovedProductToDatabase(storeId: string, product: EbayProduct): Promise<void> {
+    await prisma.product.create({
+      data: {
+        storeId,
+        ebayItemId: product.itemId,
+        title: product.title,
+        price: this.parsePrice(product.price),
+        currency: this.parseCurrency(product.price),
+        listingUrl: product.url,
+        condition: product.condition,
+        imageUrl: product.imageUrl,
+        quantity: product.quantity || 1,
+        status: 'REMOVED',
+        verificationStatus: 'PENDING',
+        firstSeenAt: new Date(),
+        lastSeenAt: new Date(),
+      }
+    });
+  }
+
+  /**
+   * 価格文字列を数値に変換
+   */
+  private parsePrice(priceStr: string): number {
+    if (!priceStr || priceStr === '価格不明') {
+      return 0;
+    }
+
+    const priceMatch = priceStr.match(/[\d,]+\.?\d*/);
+    if (priceMatch) {
+      const cleanPrice = priceMatch[0].replace(/,/g, '');
+      const price = parseFloat(cleanPrice);
+      return price >= 0 ? price : 0;
+    }
+
+    return 0;
+  }
+
+  /**
+   * 通貨を解析
+   */
+  private parseCurrency(priceStr: string): string {
+    if (!priceStr || priceStr === '価格不明') {
+      return 'USD';
+    }
+
+    if (priceStr.includes('円') || priceStr.includes('¥')) {
+      return 'JPY';
+    }
+    
+    if (priceStr.includes('$') || priceStr.includes('USD')) {
+      return 'USD';
+    }
+    
+    if (priceStr.includes('€') || priceStr.includes('EUR')) {
+      return 'EUR';
+    }
+    
+    return 'USD';
+  }
+
+  /**
+   * クロール状態を更新
+   */
+  private async updateCrawlStatus(storeId: string, isRunning: boolean): Promise<void> {
+    await prisma.crawlStatus.upsert({
+      where: { storeId },
+      update: {
+        isRunning,
+        startedAt: isRunning ? new Date() : null,
+        serverId: isRunning ? this.serverId : null,
+      },
+      create: {
+        storeId,
+        isRunning,
+        startedAt: isRunning ? new Date() : null,
+        serverId: isRunning ? this.serverId : null,
+      }
+    });
+  }
+
+  /**
+   * 全ページの商品一覧を取得（ebayCrawlerServiceから移植）
+   */
+  private async getAllProducts(shopName: string): Promise<EbayProduct[]> {
+    console.log(`🌐 ストア「${shopName}」の商品取得を開始します...`);
+    
+    // ブラウザ起動前の待機（前のブラウザの完全終了を待つ）
+    console.log(`⏳ ブラウザ起動前の待機中...`);
+    await new Promise(resolve => setTimeout(resolve, 5000));
+    
+    // 処理中のフラグをチェック
+    if (this.isProcessingStore) {
+      console.log(`🔒 ストア「${shopName}」の処理中です。並列実行を防ぎます。`);
+    }
+    
+    const result = await ebayCrawlerService.getAllProducts(shopName);
+    
+    console.log(`✅ ストア「${shopName}」の商品取得が完了しました (${result.length}件)`);
+    
+    // ブラウザ終了後の待機（メモリ解放のため）
+    console.log(`⏳ ブラウザ終了後の待機中...`);
+    await new Promise(resolve => setTimeout(resolve, 3000));
+    
+    return result;
   }
 
   /**

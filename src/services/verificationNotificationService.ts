@@ -37,9 +37,7 @@ export class VerificationNotificationService {
       failed: number;
       summary: {
         sold: number;
-        outOfStock: number;
-        listingEnded: number;
-        verified: number;
+        deleted: number; // 削除された商品数（売れていなかった商品）
         errors: number;
       };
     };
@@ -178,8 +176,7 @@ export class VerificationNotificationService {
       pending: number;
       verified: number;
       soldConfirmed: number;
-      outOfStock: number;
-      listingEnded: number;
+      deleted: number; // 削除された商品数
       error: number;
     };
     notification: {
@@ -254,8 +251,7 @@ export class VerificationNotificationService {
         pending: number;
         verified: number;
         soldConfirmed: number;
-        outOfStock: number;
-        listingEnded: number;
+        deleted: number; // 削除された商品数
         error: number;
       };
       notification: {
@@ -309,8 +305,7 @@ export class VerificationNotificationService {
             pending: 0,
             verified: 0,
             soldConfirmed: 0,
-            outOfStock: 0,
-            listingEnded: 0,
+            deleted: 0, // 削除された商品数
             error: 0
           },
           notification: {

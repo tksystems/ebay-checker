@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { PlusIcon, PlayIcon, EyeIcon, HeartIcon, XMarkIcon } from '@heroicons/react/24/outline'
+import { PlusIcon, EyeIcon, HeartIcon, XMarkIcon } from '@heroicons/react/24/outline'
 
 interface Store {
   id: string
@@ -34,8 +34,8 @@ export default function StoresPage() {
   const [showAddForm, setShowAddForm] = useState(false)
   const [newStoreName, setNewStoreName] = useState('')
   const [newStoreUrl, setNewStoreUrl] = useState('')
-  const [crawling, setCrawling] = useState<string | null>(null)
-  const [crawlResults, setCrawlResults] = useState<Record<string, CrawlResult>>({})
+  // const [crawling, setCrawling] = useState<string | null>(null) // 未使用のためコメントアウト
+  const [crawlResults, setCrawlResults] = useState<Record<string, CrawlResult>>({}) // eslint-disable-line @typescript-eslint/no-unused-vars
 
   // ストア一覧を取得
   const fetchStores = async () => {
@@ -93,41 +93,41 @@ export default function StoresPage() {
     }
   }
 
-  // ストアをクローリング
-  const crawlStore = async (storeId: string, storeName: string) => {
-    setCrawling(storeId)
-    
-    try {
-      const response = await fetch(`/api/stores/${storeId}/crawl`, {
-        method: 'POST',
-      })
+  // ストアをクローリング（未使用のためコメントアウト）
+  // const crawlStore = async (storeId: string, storeName: string) => {
+  //   setCrawling(storeId)
+  //   
+  //   try {
+  //     const response = await fetch(`/api/stores/${storeId}/crawl`, {
+  //       method: 'POST',
+  //     })
 
-      const data = await response.json()
+  //     const data = await response.json()
       
-      setCrawlResults(prev => ({
-        ...prev,
-        [storeId]: data
-      }))
+  //     setCrawlResults(prev => ({
+  //       ...prev,
+  //       [storeId]: data
+  //     }))
 
-      if (data.success) {
-        await fetchStores() // 一覧を再取得
-        
-        // 実際のクローリングはCLIスクリプトで実行されることを通知
-        if (data.note) {
-          alert(`${data.message}\n\n${data.note}\n\nCLIスクリプトでクローリングを実行してください:\nnpm run ebay:crawl ${storeName}`)
-        } else {
-          alert(`ストア「${storeName}」のクローリングが完了しました！\n新商品: ${data.result.productsNew}件\n売れた商品: ${data.result.productsSold}件`)
-        }
-      } else {
-        alert(`ストア「${storeName}」のクローリングに失敗しました: ${data.error}`)
-      }
-    } catch (error) {
-      console.error('クローリング中にエラー:', error)
-      alert('クローリング中にエラーが発生しました')
-    } finally {
-      setCrawling(null)
-    }
-  }
+  //     if (data.success) {
+  //       await fetchStores() // 一覧を再取得
+  //       
+  //       // 実際のクローリングはCLIスクリプトで実行されることを通知
+  //       if (data.note) {
+  //         alert(`${data.message}\n\n${data.note}\n\nCLIスクリプトでクローリングを実行してください:\nnpm run ebay:crawl ${storeName}`)
+  //       } else {
+  //         alert(`ストア「${storeName}」のクローリングが完了しました！\n新商品: ${data.result.productsNew}件\n売れた商品: ${data.result.productsSold}件`)
+  //       }
+  //     } else {
+  //       alert(`ストア「${storeName}」のクローリングに失敗しました: ${data.error}`)
+  //     }
+  //   } catch (error) {
+  //     console.error('クローリング中にエラー:', error)
+  //     alert('クローリング中にエラーが発生しました')
+  //   } finally {
+  //     setCrawling(null)
+  //   }
+  // }
 
 
   // ストアを購読

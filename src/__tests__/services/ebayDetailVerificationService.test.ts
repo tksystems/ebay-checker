@@ -345,8 +345,7 @@ describe('EbayDetailVerificationService', () => {
         pending: 5,
         verified: 10,
         soldConfirmed: 3,
-        outOfStock: 2,
-        listingEnded: 1,
+        deleted: 3, // 削除された商品数（売れていなかった商品）
         error: 1
       });
     });
