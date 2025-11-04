@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { ProductStatus, CrawlLogStatus } from "@prisma/client";
-import { getProxyConfig } from "../config/proxy";
+import { getProxyConfig, getCrawlConfig } from "../config/proxy";
 
 // サーバーサイドでのみPlaywrightをインポート
 let chromium: typeof import('playwright-extra').chromium | undefined;
@@ -48,7 +48,6 @@ export interface CrawlResult {
 }
 
 export class EbayCrawlerService {
-  private readonly DEFAULT_CRAWL_INTERVAL = 1000; // 1秒
   private readonly MAX_RETRIES = 3;
   private readonly PAGE_TIMEOUT = 60000;
   private readonly ELEMENT_TIMEOUT = 15000;
@@ -175,12 +174,14 @@ export class EbayCrawlerService {
     console.log(`🌐 ブラウザ起動開始: ${new Date().toISOString()}`);
     const browserStartTime = Date.now();
       
-      // プロキシ設定を取得
+      // プロキシ設定とクロール設定を取得
       const proxyConfig = getProxyConfig();
+      const crawlConfig = getCrawlConfig();
       console.log(`🔧 プロキシ設定: ${proxyConfig.enabled ? '有効' : '無効'}`);
       if (proxyConfig.enabled) {
         console.log(`🌐 プロキシ: ${proxyConfig.host}:${proxyConfig.port} (${proxyConfig.type})`);
       }
+      console.log(`⏱️  クロール間隔設定: ページ間隔=${crawlConfig.pageInterval}ms, 初回遅延=${crawlConfig.initialDelay}ms, ページ読み込み後遅延=${crawlConfig.pageLoadDelay}ms`);
       
       let browser: Awaited<ReturnType<typeof chromium.launch>> | null = null;
       try {
@@ -291,13 +292,20 @@ export class EbayCrawlerService {
         console.log(`ページ ${currentPage} を取得中: ${url}`);
         console.log(`🕐 ページ取得開始時刻: ${new Date().toISOString()}`);
         
+        // 初回通信前の待機
+        if (currentPage === 1) {
+          console.log(`⏳ 初回通信前の待機中... (${crawlConfig.initialDelay}ms)`);
+          await new Promise(resolve => setTimeout(resolve, crawlConfig.initialDelay));
+        }
+        
         try {
           console.log(`🔍 ページナビゲーション開始: ${url}`);
           await page.goto(url, { waitUntil: 'domcontentloaded', timeout: this.PAGE_TIMEOUT });
           console.log(`✅ ページ ${currentPage} の読み込み完了`);
           
-          // 自然な待機時間を追加
-          await new Promise(resolve => setTimeout(resolve, 2000));
+          // ページ読み込み後の待機時間を追加
+          console.log(`⏳ ページ読み込み後の待機中... (${crawlConfig.pageLoadDelay}ms)`);
+          await new Promise(resolve => setTimeout(resolve, crawlConfig.pageLoadDelay));
           
           // ページ読み込み後の状態確認
           let finalUrl = '';
@@ -768,8 +776,8 @@ export class EbayCrawlerService {
 
         // ページ間の待機
         if (hasNextPage) {
-          console.log('次のページまで1秒待機...');
-          await new Promise(resolve => setTimeout(resolve, this.DEFAULT_CRAWL_INTERVAL));
+          console.log(`⏳ 次のページまで待機中... (${crawlConfig.pageInterval}ms)`);
+          await new Promise(resolve => setTimeout(resolve, crawlConfig.pageInterval));
         }
       }
 
