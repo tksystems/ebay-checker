@@ -177,6 +177,16 @@ export class EbayCrawlerService {
       // プロキシ設定とクロール設定を取得
       const proxyConfig = getProxyConfig();
       const crawlConfig = getCrawlConfig();
+      
+      // 環境変数のデバッグ情報
+      console.log(`🔍 環境変数デバッグ:`);
+      console.log(`   USE_PROXY=${process.env.USE_PROXY}`);
+      console.log(`   PROXY_HOST=${process.env.PROXY_HOST}`);
+      console.log(`   PROXY_PORT=${process.env.PROXY_PORT}`);
+      console.log(`   PROXY_USERNAME=${process.env.PROXY_USERNAME ? '***' : '未設定'}`);
+      console.log(`   PROXY_PASSWORD=${process.env.PROXY_PASSWORD ? '***' : '未設定'}`);
+      console.log(`   PROXY_TYPE=${process.env.PROXY_TYPE}`);
+      
       console.log(`🔧 プロキシ設定: ${proxyConfig.enabled ? '有効' : '無効'}`);
       if (proxyConfig.enabled) {
         console.log(`🌐 プロキシ: ${proxyConfig.host}:${proxyConfig.port} (${proxyConfig.type})`);
@@ -184,11 +194,7 @@ export class EbayCrawlerService {
       console.log(`⏱️  クロール間隔設定: ページ間隔=${crawlConfig.pageInterval}ms, 初回遅延=${crawlConfig.initialDelay}ms, ページ読み込み後遅延=${crawlConfig.pageLoadDelay}ms`);
       
       let browser: Awaited<ReturnType<typeof chromium.launch>> | null = null;
-      try {
-        // ブラウザ起動時のメモリ使用量を記録
-        const memoryBefore = process.memoryUsage();
-      console.log(`📊 ブラウザ起動前メモリ: RSS=${Math.round(memoryBefore.rss / 1024 / 1024)}MB, Heap=${Math.round(memoryBefore.heapUsed / 1024 / 1024)}MB`);
-
+      let context: Awaited<ReturnType<Awaited<ReturnType<typeof chromium.launch>>['newContext']>> | null = null;
       const launchOptions: Parameters<typeof chromium.launch>[0] = {
         headless: true,
         args: [
@@ -223,9 +229,22 @@ export class EbayCrawlerService {
           };
         }
         console.log(`🌐 プロキシ設定完了: ${proxyConfig.type}://${proxyConfig.host}:${proxyConfig.port}`);
+        console.log(`🔍 プロキシ認証情報: username=${proxyConfig.username}, password=${proxyConfig.password ? '***' : '未設定'}`);
+        console.log(`🔍 launchOptions.proxy:`, JSON.stringify({
+          server: launchOptions.proxy?.server,
+          username: launchOptions.proxy?.username ? '***' : undefined,
+          password: launchOptions.proxy?.password ? '***' : undefined
+        }, null, 2));
+      } else {
+        console.log(`⚠️  プロキシが無効です。直接接続されます。`);
       }
 
-      browser = await chromium.launch(launchOptions);
+      // ブラウザ起動時のメモリ使用量を記録
+      const memoryBefore = process.memoryUsage();
+      console.log(`📊 ブラウザ起動前メモリ: RSS=${Math.round(memoryBefore.rss / 1024 / 1024)}MB, Heap=${Math.round(memoryBefore.heapUsed / 1024 / 1024)}MB`);
+
+      try {
+        browser = await chromium.launch(launchOptions);
 
       const browserLaunchTime = Date.now() - browserStartTime;
       console.log(`✅ ブラウザ起動完了: ${browserLaunchTime}ms`);
@@ -233,6 +252,12 @@ export class EbayCrawlerService {
       const memoryAfter = process.memoryUsage();
       console.log(`📊 ブラウザ起動後メモリ: RSS=${Math.round(memoryAfter.rss / 1024 / 1024)}MB, Heap=${Math.round(memoryAfter.heapUsed / 1024 / 1024)}MB`);
       console.log(`📊 メモリ増加量: RSS=${Math.round((memoryAfter.rss - memoryBefore.rss) / 1024 / 1024)}MB, Heap=${Math.round((memoryAfter.heapUsed - memoryBefore.heapUsed) / 1024 / 1024)}MB`);
+      
+      // ブラウザコンテキストのプロキシ設定を確認・設定
+      if (proxyConfig.enabled && launchOptions.proxy) {
+        console.log(`🔍 ブラウザコンテキストのプロキシ設定を確認中...`);
+        console.log(`🔍 launchOptions.proxy が設定されています:`, launchOptions.proxy ? 'はい' : 'いいえ');
+      }
 
     } catch (browserError) {
       console.error(`❌ ブラウザ起動失敗:`, browserError);
@@ -245,7 +270,59 @@ export class EbayCrawlerService {
     }
 
     try {
-      const page = await browser.newPage();
+      // コンテキストレベルでプロキシを設定（より確実）
+      if (!browser) {
+        throw new Error('Browser is not initialized');
+      }
+      
+      if (proxyConfig.enabled && launchOptions.proxy) {
+        console.log(`🔧 コンテキストレベルでプロキシを設定します...`);
+        const contextOptions: Parameters<typeof browser.newContext>[0] = {
+          proxy: {
+            server: launchOptions.proxy.server,
+            username: launchOptions.proxy.username,
+            password: launchOptions.proxy.password
+          }
+        };
+        context = await browser.newContext(contextOptions);
+        console.log(`✅ コンテキストレベルでプロキシ設定完了`);
+      } else {
+        context = await browser.newContext();
+        if (proxyConfig.enabled) {
+          console.log(`⚠️  警告: コンテキストレベルでプロキシが設定されていません！`);
+        }
+      }
+      
+      const page = await context.newPage();
+      
+      // プロキシが実際に使われているかを確認（IPアドレス確認）
+      if (proxyConfig.enabled) {
+        try {
+          console.log(`🔍 プロキシ確認: 実際のIPアドレスを確認中...`);
+          await page.goto('https://api.ipify.org?format=json', { 
+            waitUntil: 'domcontentloaded', 
+            timeout: 10000 
+          });
+          const ipCheckContent = await page.content();
+          const ipMatch = ipCheckContent.match(/"ip":"([^"]+)"/);
+          if (ipMatch && ipMatch[1]) {
+            const actualIp = ipMatch[1];
+            console.log(`🌐 実際に使用されているIPアドレス: ${actualIp}`);
+            console.log(`🔍 プロキシIPアドレス: ${proxyConfig.host}`);
+            if (actualIp === proxyConfig.host) {
+              console.log(`✅ プロキシが正しく使用されています！`);
+            } else {
+              console.log(`⚠️  警告: プロキシIP (${proxyConfig.host}) と実際のIP (${actualIp}) が一致しません！`);
+              console.log(`⚠️  本番サーバーのIPが漏れている可能性があります！`);
+            }
+          } else {
+            console.log(`⚠️  IPアドレス確認に失敗しました。レスポンス: ${ipCheckContent.substring(0, 200)}`);
+          }
+        } catch (ipCheckError) {
+          console.error(`❌ IPアドレス確認中にエラー:`, ipCheckError);
+          console.log(`⚠️  プロキシが正しく動作していない可能性があります。`);
+        }
+      }
       
       // より自然なブラウザ環境を設定
       await page.addInitScript(() => {
@@ -808,6 +885,17 @@ export class EbayCrawlerService {
       
       throw pageError;
     } finally {
+      // コンテキストを先に終了
+      if (context) {
+        try {
+          console.log(`🔒 コンテキスト終了開始: ${new Date().toISOString()}`);
+          await context.close();
+          console.log(`✅ コンテキスト終了完了`);
+        } catch (contextCloseError) {
+          console.error(`❌ コンテキスト終了失敗:`, contextCloseError);
+        }
+      }
+      
       if (browser) {
         try {
           console.log(`🔒 ブラウザ終了開始: ${new Date().toISOString()}`);
