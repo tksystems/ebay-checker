@@ -152,8 +152,10 @@ class StoreObserver {
         }
         
         // ストア間の待機時間を追加（メモリ解放のため）
-        console.log(`⏳ 次のストア処理まで10秒待機中...`);
-        await new Promise(resolve => setTimeout(resolve, 10000));
+        const crawlConfig = getCrawlConfig();
+        const storeIntervalMs = crawlConfig.storeInterval;
+        console.log(`⏳ 次のストア処理まで${storeIntervalMs / 1000}秒待機中...`);
+        await new Promise(resolve => setTimeout(resolve, storeIntervalMs));
       }
 
       console.log(`✅ 監視実行完了: ${new Date().toISOString()}`);
