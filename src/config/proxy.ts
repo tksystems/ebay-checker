@@ -7,6 +7,12 @@ export interface ProxyConfig {
   enabled: boolean;
 }
 
+export interface CrawlConfig {
+  pageInterval: number; // ページ間の待機時間（ミリ秒）
+  initialDelay: number; // 初回通信前の待機時間（ミリ秒）
+  pageLoadDelay: number; // ページ読み込み後の待機時間（ミリ秒）
+}
+
 export const getProxyConfig = (): ProxyConfig => {
   return {
     host: process.env.PROXY_HOST || '66.93.6.79',
@@ -15,5 +21,13 @@ export const getProxyConfig = (): ProxyConfig => {
     password: process.env.PROXY_PASSWORD || 'xxxxx',
     type: (process.env.PROXY_TYPE as 'http' | 'socks5') || 'http',
     enabled: process.env.USE_PROXY === 'true', // デフォルトで無効
+  };
+};
+
+export const getCrawlConfig = (): CrawlConfig => {
+  return {
+    pageInterval: parseInt(process.env.CRAWL_PAGE_INTERVAL || '10000'), // デフォルト10秒
+    initialDelay: parseInt(process.env.CRAWL_INITIAL_DELAY || '10000'), // デフォルト10秒
+    pageLoadDelay: parseInt(process.env.CRAWL_PAGE_LOAD_DELAY || '10000'), // デフォルト10秒
   };
 };

@@ -7,6 +7,7 @@
 
 import { PrismaClient, NotificationType, NotificationStatus } from '@prisma/client';
 import { ebayCrawlerService, CrawlResult, EbayProduct } from '../src/services/ebayCrawlerService';
+import { getCrawlConfig } from '../src/config/proxy';
 
 const prisma = new PrismaClient();
 
@@ -583,9 +584,12 @@ class StoreObserver {
   private async getAllProducts(shopName: string): Promise<EbayProduct[]> {
     console.log(`🌐 ストア「${shopName}」の商品取得を開始します...`);
     
+    // クロール設定を取得
+    const crawlConfig = getCrawlConfig();
+    
     // ブラウザ起動前の待機（前のブラウザの完全終了を待つ）
-    console.log(`⏳ ブラウザ起動前の待機中...`);
-    await new Promise(resolve => setTimeout(resolve, 5000));
+    console.log(`⏳ ブラウザ起動前の待機中... (${crawlConfig.initialDelay}ms)`);
+    await new Promise(resolve => setTimeout(resolve, crawlConfig.initialDelay));
     
     // 処理中のフラグをチェック
     if (this.isProcessingStore) {
@@ -597,8 +601,8 @@ class StoreObserver {
     console.log(`✅ ストア「${shopName}」の商品取得が完了しました (${result.length}件)`);
     
     // ブラウザ終了後の待機（メモリ解放のため）
-    console.log(`⏳ ブラウザ終了後の待機中...`);
-    await new Promise(resolve => setTimeout(resolve, 3000));
+    console.log(`⏳ ブラウザ終了後の待機中... (${crawlConfig.pageLoadDelay}ms)`);
+    await new Promise(resolve => setTimeout(resolve, crawlConfig.pageLoadDelay));
     
     return result;
   }
