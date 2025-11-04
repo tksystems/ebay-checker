@@ -323,6 +323,67 @@ export class EbayCrawlerService {
       
       const page = await context.newPage();
       
+      // リクエストヘッダーをログ出力するためのリスナーを設定（主要なeBayページのみ）
+      page.on('request', (request) => {
+        const url = request.url();
+        // 主要なeBayページのみログ出力（商品検索ページ、ストアページ、ホームページなど）
+        const importantPaths = [
+          '/sch/i.html',  // 商品検索ページ
+          '/usr/',        // ストアページ
+          '/sch/',        // 検索ページ
+          '/',            // ホームページ（ルートパス）
+          '/splashui/',   // チャレンジページ
+        ];
+        
+        if (url.includes('ebay.com') && importantPaths.some(path => url.includes(path))) {
+          const headers = request.headers();
+          console.log(`📤 リクエスト: ${request.method()} ${url}`);
+          console.log(`📤 リクエストヘッダー:`, JSON.stringify({
+            'User-Agent': headers['user-agent'],
+            'Accept-Language': headers['accept-language'],
+            'Accept': headers['accept'],
+            'Sec-Ch-Ua-Platform': headers['sec-ch-ua-platform'],
+            'Sec-Fetch-Site': headers['sec-fetch-site'],
+            'Sec-Fetch-Mode': headers['sec-fetch-mode'],
+            'Sec-Fetch-User': headers['sec-fetch-user'],
+            'Referer': headers['referer'],
+          }, null, 2));
+        }
+      });
+      
+      // レスポンスヘッダーをログ出力するためのリスナーを設定（主要なeBayページのみ）
+      page.on('response', async (response) => {
+        const url = response.url();
+        // 主要なeBayページのみログ出力
+        const importantPaths = [
+          '/sch/i.html',  // 商品検索ページ
+          '/usr/',        // ストアページ
+          '/sch/',        // 検索ページ
+          '/',            // ホームページ（ルートパス）
+          '/splashui/',   // チャレンジページ
+        ];
+        
+        if (url.includes('ebay.com') && importantPaths.some(path => url.includes(path))) {
+          const status = response.status();
+          const headers = response.headers();
+          console.log(`📥 レスポンス: ${status} ${url}`);
+          if (status === 302 || status === 301 || status === 307 || status === 308) {
+            console.log(`🔄 リダイレクト検出: ${status}`);
+            console.log(`📥 Location: ${headers['location'] || 'なし'}`);
+          }
+          if (status >= 400) {
+            console.log(`❌ エラーレスポンス: ${status}`);
+            console.log(`📥 レスポンスヘッダー:`, JSON.stringify({
+              'content-type': headers['content-type'],
+              'location': headers['location'],
+            }, null, 2));
+          }
+          if (headers['set-cookie']) {
+            console.log(`🍪 Cookie設定: ${headers['set-cookie'].substring(0, 100)}...`);
+          }
+        }
+      });
+      
       // プロキシが実際に使われているかを確認（IPアドレス確認）
       if (proxyConfig.enabled) {
         try {
@@ -350,6 +411,29 @@ export class EbayCrawlerService {
           console.error(`❌ IPアドレス確認中にエラー:`, ipCheckError);
           console.log(`⚠️  プロキシが正しく動作していない可能性があります。`);
         }
+      }
+      
+      // eBayのホームページに一度アクセスしてCookieを設定（より自然なアクセスパターン）
+      try {
+        console.log(`🌐 eBayホームページにアクセスしてCookieを設定中...`);
+        await page.goto('https://www.ebay.com', {
+          waitUntil: 'domcontentloaded',
+          timeout: 15000
+        });
+        console.log(`✅ eBayホームページアクセス完了`);
+        
+        // Cookieを確認
+        const cookies = await context.cookies();
+        console.log(`🍪 設定されたCookie数: ${cookies.length}`);
+        if (cookies.length > 0) {
+          console.log(`🍪 Cookie例:`, cookies.slice(0, 3).map(c => `${c.name}=${c.value.substring(0, 20)}...`).join(', '));
+        }
+        
+        // 少し待機してセッションを確立
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      } catch (homePageError) {
+        console.error(`⚠️  eBayホームページアクセスエラー:`, homePageError);
+        console.log(`⚠️  ホームページアクセスをスキップして続行します...`);
       }
       
       // OSに依存しない統一されたブラウザ環境を設定
@@ -418,17 +502,54 @@ export class EbayCrawlerService {
       });
       console.log(`🌍 ページレベルHTTPヘッダー設定完了（統一設定適用）`);
       
-      // 不要なリソースをブロック（軽量化）
+      // 不要なリソースをブロック（広告、トラッキング、アナリティクスなど）
       await page.route('**/*', (route) => {
         const resourceType = route.request().resourceType();
         const url = route.request().url();
         
-        // 動画と音声のみブロック（画像、フォント、CSS、JavaScriptは許可）
+        // eBayドメイン以外のリクエストをブロック（広告、トラッキングなど）
+        if (!url.includes('ebay.com') && !url.includes('ebaystatic.com') && !url.includes('ebayimg.com')) {
+          route.abort();
+          return;
+        }
+        
+        // 広告・トラッキング関連のURLをブロック
+        const blockedPatterns = [
+          'googleads',
+          'doubleclick',
+          'googlesyndication',
+          'google-analytics',
+          'googletagmanager',
+          'facebook.com',
+          'facebook.net',
+          'analytics',
+          'tracking',
+          'advertising',
+          'ads',
+          'adserver',
+          'adnxs',
+          'adform',
+          'criteo',
+          'amazon-adsystem',
+          'media.net',
+          'outbrain',
+          'taboola',
+          'scorecardresearch',
+        ];
+        
+        if (blockedPatterns.some(pattern => url.toLowerCase().includes(pattern.toLowerCase()))) {
+          route.abort();
+          return;
+        }
+        
+        // 動画と音声をブロック（軽量化）
         if (resourceType === 'media' && (url.includes('video') || url.includes('audio'))) {
           route.abort();
-        } else {
-          route.continue();
+          return;
         }
+        
+        // その他は許可
+        route.continue();
       });
 
       const allProducts: EbayProduct[] = [];
