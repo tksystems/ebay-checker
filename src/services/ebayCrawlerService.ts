@@ -419,21 +419,44 @@ export class EbayCrawlerService {
       // eBayのホームページに一度アクセスしてCookieを設定（より自然なアクセスパターン）
       try {
         console.log(`🌐 eBayホームページにアクセスしてCookieを設定中...`);
+        // networkidleで待機して、ページが完全に読み込まれ、JavaScriptが実行されるまで待つ
         await page.goto('https://www.ebay.com', {
-          waitUntil: 'domcontentloaded',
-          timeout: 15000
+          waitUntil: 'networkidle', // ページが完全に読み込まれ、ネットワークリクエストが完了するまで待機
+          timeout: 30000
         });
-        console.log(`✅ eBayホームページアクセス完了`);
+        console.log(`✅ eBayホームページアクセス完了（networkidle完了）`);
         
         // Cookieを確認
         const cookies = await context.cookies();
         console.log(`🍪 設定されたCookie数: ${cookies.length}`);
         if (cookies.length > 0) {
-          console.log(`🍪 Cookie例:`, cookies.slice(0, 3).map(c => `${c.name}=${c.value.substring(0, 20)}...`).join(', '));
+          console.log(`🍪 Cookie名一覧:`, cookies.map(c => c.name).join(', '));
+          console.log(`🍪 Cookie例:`, cookies.slice(0, 5).map(c => `${c.name}=${c.value.substring(0, 30)}...`).join(', '));
+          
+          // 重要なCookieの存在を確認
+          const importantCookies = ['s', 'nonsession', 'dp1', 'ds2', 'ak_bmsc'];
+          const foundCookies = cookies.filter(c => importantCookies.includes(c.name));
+          console.log(`🍪 重要なCookie:`, foundCookies.map(c => c.name).join(', '));
         }
         
-        // 少し待機してセッションを確立
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        // セッション確立のための待機時間を延長（本番環境では追加のCookie設定が必要な可能性）
+        console.log(`⏳ セッション確立のための待機中... (5秒)`);
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        
+        // より自然なアクセスパターンを模倣するため、ページを少しスクロール
+        try {
+          console.log(`🖱️  ページをスクロールして自然なアクセスパターンを模倣中...`);
+          await page.evaluate(() => {
+            window.scrollTo(0, 100);
+          });
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          await page.evaluate(() => {
+            window.scrollTo(0, 0);
+          });
+          console.log(`✅ スクロール操作完了`);
+        } catch (scrollError) {
+          console.log(`⚠️  スクロール操作エラー（続行）:`, scrollError);
+        }
       } catch (homePageError) {
         console.error(`⚠️  eBayホームページアクセスエラー:`, homePageError);
         console.log(`⚠️  ホームページアクセスをスキップして続行します...`);
