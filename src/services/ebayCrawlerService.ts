@@ -457,6 +457,12 @@ export class EbayCrawlerService {
         } catch (scrollError) {
           console.log(`⚠️  スクロール操作エラー（続行）:`, scrollError);
         }
+        
+        // 本番環境での問題を回避するため、ホームページアクセス後にさらに待機
+        // eBayのセキュリティシステムがセッションを確立する時間を確保
+        console.log(`⏳ ストアページアクセス前の追加待機中... (10秒)`);
+        await new Promise(resolve => setTimeout(resolve, 10000));
+        console.log(`✅ 追加待機完了`);
       } catch (homePageError) {
         console.error(`⚠️  eBayホームページアクセスエラー:`, homePageError);
         console.log(`⚠️  ホームページアクセスをスキップして続行します...`);
@@ -509,8 +515,37 @@ export class EbayCrawlerService {
         Object.defineProperty(navigator, 'plugins', {
           get: () => [1, 2, 3, 4, 5], // ダミーのプラグイン数
         });
+        
+        // Canvasフィンガープリント対策（ランダムノイズを追加）
+        const originalToDataURL = HTMLCanvasElement.prototype.toDataURL;
+        HTMLCanvasElement.prototype.toDataURL = function() {
+          const context = this.getContext('2d');
+          if (context) {
+            // ランダムノイズを追加（検出を回避）
+            const imageData = context.getImageData(0, 0, this.width, this.height);
+            for (let i = 0; i < imageData.data.length; i += 4) {
+              imageData.data[i] += Math.floor(Math.random() * 3) - 1;
+              imageData.data[i + 1] += Math.floor(Math.random() * 3) - 1;
+              imageData.data[i + 2] += Math.floor(Math.random() * 3) - 1;
+            }
+            context.putImageData(imageData, 0, 0);
+          }
+          return originalToDataURL.apply(this, arguments as any);
+        };
+        
+        // WebGLフィンガープリント対策
+        const getParameter = WebGLRenderingContext.prototype.getParameter;
+        WebGLRenderingContext.prototype.getParameter = function(parameter) {
+          if (parameter === 37445) { // UNMASKED_VENDOR_WEBGL
+            return 'Intel Inc.';
+          }
+          if (parameter === 37446) { // UNMASKED_RENDERER_WEBGL
+            return 'Intel Iris OpenGL Engine';
+          }
+          return getParameter.apply(this, arguments as any);
+        };
       });
-      console.log(`🌍 Navigator設定完了（統一設定適用）`);
+      console.log(`🌍 Navigator設定完了（統一設定適用、Canvas/WebGLフィンガープリント対策追加）`);
       
       // OSに依存しない統一されたHTTPヘッダーを設定
       await page.setExtraHTTPHeaders({
