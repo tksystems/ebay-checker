@@ -195,6 +195,9 @@ export class EbayCrawlerService {
       
       let browser: Awaited<ReturnType<typeof chromium.launch>> | null = null;
       let context: Awaited<ReturnType<Awaited<ReturnType<typeof chromium.launch>>['newContext']>> | null = null;
+      // User-Agentを統一（macOS Chrome）
+      const userAgent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+      
       const launchOptions: Parameters<typeof chromium.launch>[0] = {
         headless: true,
         args: [
@@ -209,7 +212,9 @@ export class EbayCrawlerService {
           '--disable-extensions-except',
           '--disable-plugins-discovery',
           '--memory-pressure-off',
-          '--max_old_space_size=4096'
+          '--max_old_space_size=4096',
+          // User-Agentをブラウザ起動時に設定（OS検出を上書き）
+          `--user-agent=${userAgent}`
         ]
       };
 
@@ -294,11 +299,8 @@ export class EbayCrawlerService {
           height: 1080
         },
         // User-Agent（統一：macOS Chromeを模倣）
-        userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        // Accept-Language（統一）
-        extraHTTPHeaders: {
-          'Accept-Language': 'en-US,en;q=0.9'
-        }
+        userAgent: userAgent,
+        // Accept-Language（統一）- extraHTTPHeadersは削除（ページレベルで設定）
       };
       
       // プロキシ設定を追加
@@ -316,7 +318,8 @@ export class EbayCrawlerService {
       
       console.log(`🌍 ブラウザ設定: locale=${contextOptions.locale}, timezone=${contextOptions.timezoneId}`);
       console.log(`🌍 地理的位置: lat=${contextOptions.geolocation?.latitude}, lng=${contextOptions.geolocation?.longitude}`);
-      console.log(`🌍 User-Agent: ${contextOptions.userAgent}`);
+      console.log(`🌍 User-Agent: ${contextOptions.userAgent || userAgent}`);
+      console.log(`🌍 User-Agent確認: ${(contextOptions.userAgent || userAgent).includes('Macintosh') ? '✅ macOS' : '❌ 非macOS'}`);
       
       context = await browser.newContext(contextOptions);
       console.log(`✅ コンテキスト作成完了（統一設定適用）`);
@@ -457,7 +460,9 @@ export class EbayCrawlerService {
           get: () => 'MacIntel',
         });
         
-        // User-Agentを統一
+        // User-Agentを統一（定数を使用）
+        // 注意: この値はaddInitScript内で定義されているため、userAgent変数は直接使用できない
+        // コンテキストレベルとページレベルの設定に依存
         Object.defineProperty(navigator, 'userAgent', {
           get: () => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         });
@@ -492,13 +497,13 @@ export class EbayCrawlerService {
         'Cache-Control': 'max-age=0',
         'Sec-Ch-Ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
         'Sec-Ch-Ua-Mobile': '?0',
-        'Sec-Ch-Ua-Platform': '"macOS"',
+        'Sec-Ch-Ua-Platform': '"macOS"', // User-Agentと一致させる
         'Sec-Fetch-Dest': 'document',
         'Sec-Fetch-Mode': 'navigate',
         'Sec-Fetch-Site': 'none',
         'Sec-Fetch-User': '?1',
         'Upgrade-Insecure-Requests': '1',
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        'User-Agent': userAgent // 統一されたUser-Agent
       });
       console.log(`🌍 ページレベルHTTPヘッダー設定完了（統一設定適用）`);
       
