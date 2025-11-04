@@ -508,6 +508,7 @@ export class EbayCrawlerService {
       console.log(`🌍 ページレベルHTTPヘッダー設定完了（統一設定適用）`);
       
       // 不要なリソースをブロック（広告、トラッキング、アナリティクスなど）
+      // 同時に、eBay関連のリクエストに対してヘッダーを強制的に設定
       await page.route('**/*', (route) => {
         const resourceType = route.request().resourceType();
         const url = route.request().url();
@@ -553,8 +554,21 @@ export class EbayCrawlerService {
           return;
         }
         
-        // その他は許可
-        route.continue();
+        // eBay関連のリクエストに対して、ヘッダーを強制的に設定（リダイレクト時にも保持）
+        if (url.includes('ebay.com')) {
+          const existingHeaders = route.request().headers();
+          const headers = {
+            ...existingHeaders,
+            'User-Agent': userAgent, // 統一されたUser-Agent
+            'Sec-Ch-Ua-Platform': '"macOS"', // 強制的に"macOS"に設定（"Mac OS X"を防ぐ）
+            'Accept-Language': 'en-US,en;q=0.9', // 統一された言語設定
+            // 既存のSec-Fetch-*ヘッダーは保持（上書きしない）
+          };
+          route.continue({ headers });
+        } else {
+          // その他は許可
+          route.continue();
+        }
       });
 
       const allProducts: EbayProduct[] = [];
@@ -576,7 +590,20 @@ export class EbayCrawlerService {
         
         try {
           console.log(`🔍 ページナビゲーション開始: ${url}`);
-          await page.goto(url, { waitUntil: 'domcontentloaded', timeout: this.PAGE_TIMEOUT });
+          
+          // 初回ページアクセス時は、Refererヘッダーを設定してホームページからの遷移を模倣
+          const gotoOptions: Parameters<typeof page.goto>[1] = {
+            waitUntil: 'domcontentloaded',
+            timeout: this.PAGE_TIMEOUT
+          };
+          
+          if (currentPage === 1) {
+            // 初回アクセス時は、ホームページからの遷移としてRefererを設定
+            gotoOptions.referer = 'https://www.ebay.com/';
+            console.log(`🔗 Refererヘッダーを設定: ${gotoOptions.referer}`);
+          }
+          
+          await page.goto(url, gotoOptions);
           console.log(`✅ ページ ${currentPage} の読み込み完了`);
           
           // ページ読み込み後の待機時間を追加
