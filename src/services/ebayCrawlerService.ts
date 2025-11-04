@@ -275,23 +275,51 @@ export class EbayCrawlerService {
         throw new Error('Browser is not initialized');
       }
       
+      // OSに依存しない統一されたブラウザ設定を適用
+      const contextOptions: Parameters<typeof browser.newContext>[0] = {
+        // 言語設定（OSに依存しない）
+        locale: 'en-US',
+        // タイムゾーン（OSに依存しない）
+        timezoneId: 'America/New_York',
+        // 地理的位置情報（OSに依存しない）
+        geolocation: {
+          latitude: 40.7128,  // New York
+          longitude: -74.0060
+        },
+        // 許可設定
+        permissions: ['geolocation'],
+        // ビューポート（統一）
+        viewport: {
+          width: 1920,
+          height: 1080
+        },
+        // User-Agent（統一：macOS Chromeを模倣）
+        userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        // Accept-Language（統一）
+        extraHTTPHeaders: {
+          'Accept-Language': 'en-US,en;q=0.9'
+        }
+      };
+      
+      // プロキシ設定を追加
       if (proxyConfig.enabled && launchOptions.proxy) {
         console.log(`🔧 コンテキストレベルでプロキシを設定します...`);
-        const contextOptions: Parameters<typeof browser.newContext>[0] = {
-          proxy: {
-            server: launchOptions.proxy.server,
-            username: launchOptions.proxy.username,
-            password: launchOptions.proxy.password
-          }
+        contextOptions.proxy = {
+          server: launchOptions.proxy.server,
+          username: launchOptions.proxy.username,
+          password: launchOptions.proxy.password
         };
-        context = await browser.newContext(contextOptions);
         console.log(`✅ コンテキストレベルでプロキシ設定完了`);
-      } else {
-        context = await browser.newContext();
-        if (proxyConfig.enabled) {
-          console.log(`⚠️  警告: コンテキストレベルでプロキシが設定されていません！`);
-        }
+      } else if (proxyConfig.enabled) {
+        console.log(`⚠️  警告: コンテキストレベルでプロキシが設定されていません！`);
       }
+      
+      console.log(`🌍 ブラウザ設定: locale=${contextOptions.locale}, timezone=${contextOptions.timezoneId}`);
+      console.log(`🌍 地理的位置: lat=${contextOptions.geolocation?.latitude}, lng=${contextOptions.geolocation?.longitude}`);
+      console.log(`🌍 User-Agent: ${contextOptions.userAgent}`);
+      
+      context = await browser.newContext(contextOptions);
+      console.log(`✅ コンテキスト作成完了（統一設定適用）`);
       
       const page = await context.newPage();
       
@@ -324,26 +352,71 @@ export class EbayCrawlerService {
         }
       }
       
-      // より自然なブラウザ環境を設定
+      // OSに依存しない統一されたブラウザ環境を設定
       await page.addInitScript(() => {
+        // webdriverフラグを削除
         Object.defineProperty(navigator, 'webdriver', {
           get: () => undefined,
         });
+        
+        // 言語設定を統一
+        Object.defineProperty(navigator, 'language', {
+          get: () => 'en-US',
+        });
+        
+        Object.defineProperty(navigator, 'languages', {
+          get: () => ['en-US', 'en'],
+        });
+        
+        // プラットフォームを統一（macOSを模倣）
+        Object.defineProperty(navigator, 'platform', {
+          get: () => 'MacIntel',
+        });
+        
+        // User-Agentを統一
+        Object.defineProperty(navigator, 'userAgent', {
+          get: () => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        });
+        
+        // タイムゾーンを統一
+        Date.prototype.getTimezoneOffset = function() {
+          // America/New_York (UTC-5) のオフセットを返す（ミリ秒単位ではなく分単位）
+          return 300; // UTC-5 = +300分
+        };
+        
+        // Intl.DateTimeFormatのタイムゾーンを統一（Playwrightのコンテキストレベル設定に依存）
+        // タイムゾーンIDはコンテキスト作成時に設定されているため、ここでは追加設定不要
+        
+        // chromeオブジェクトを追加（Chromeブラウザを模倣）
+        // @ts-expect-error - window.chromeは型定義に存在しないが、実行時には問題ない
+        window.chrome = {
+          runtime: {}
+        };
+        
+        // pluginsを追加
+        Object.defineProperty(navigator, 'plugins', {
+          get: () => [1, 2, 3, 4, 5], // ダミーのプラグイン数
+        });
       });
+      console.log(`🌍 Navigator設定完了（統一設定適用）`);
       
-      // 自然なHTTPヘッダーを設定
+      // OSに依存しない統一されたHTTPヘッダーを設定
       await page.setExtraHTTPHeaders({
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+        'Accept-Language': 'en-US,en;q=0.9', // 統一された言語設定
         'Accept-Encoding': 'gzip, deflate, br',
-        'Cache-Control': 'no-cache',
-        'Pragma': 'no-cache',
+        'Cache-Control': 'max-age=0',
+        'Sec-Ch-Ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+        'Sec-Ch-Ua-Mobile': '?0',
+        'Sec-Ch-Ua-Platform': '"macOS"',
         'Sec-Fetch-Dest': 'document',
         'Sec-Fetch-Mode': 'navigate',
         'Sec-Fetch-Site': 'none',
         'Sec-Fetch-User': '?1',
         'Upgrade-Insecure-Requests': '1',
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
       });
+      console.log(`🌍 ページレベルHTTPヘッダー設定完了（統一設定適用）`);
       
       // 不要なリソースをブロック（軽量化）
       await page.route('**/*', (route) => {
