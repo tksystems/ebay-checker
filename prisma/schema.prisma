@@ -56,6 +56,18 @@ enum VerificationStatus {
   ERROR         // エラー
 }
 
+enum ProxyType {
+  HTTP
+  SOCKS5
+}
+
+enum ProxyUsageEventType {
+  USED              // 使用開始
+  SUCCESS           // 成功
+  CHALLENGE_DETECTED // チャレンジ検出
+  ERROR             // エラー
+}
+
 model User {
   id            String    @id @default(cuid())
   name          String
@@ -303,4 +315,42 @@ model ProductChange {
   @@index([changeType])
   @@index([changedAt])
   @@map("product_changes")
+}
+
+model Proxy {
+  id          String    @id @default(cuid())
+  host        String
+  port        Int
+  username    String?
+  password    String?
+  type        ProxyType @default(HTTP)
+  isActive    Boolean   @default(true)
+  blockedUntil DateTime? // 1時間ブロックの期限
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Relations
+  usageLogs ProxyUsageLog[]
+
+  @@index([isActive])
+  @@index([blockedUntil])
+  @@map("proxies")
+}
+
+model ProxyUsageLog {
+  id          String                @id @default(cuid())
+  proxyId     String
+  eventType   ProxyUsageEventType
+  storeId     String?               // 使用したストア（オプション）
+  url         String?               @db.Text // アクセスしたURL（チャレンジ検出時に記録）
+  errorMessage String?              @db.Text
+  createdAt   DateTime              @default(now())
+
+  // Relations
+  proxy Proxy @relation(fields: [proxyId], references: [id], onDelete: Cascade)
+
+  @@index([proxyId])
+  @@index([eventType])
+  @@index([createdAt])
+  @@map("proxy_usage_logs")
 }

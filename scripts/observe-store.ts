@@ -330,7 +330,7 @@ class StoreObserver {
 
       try {
         // 全ページの商品を取得
-        const currentProducts = await this.getAllProducts(store.storeName);
+        const currentProducts = await this.getAllProducts(store.storeName, store.id);
         
         // メモリキャッシュをチェック
         const cache = this.storeProductCache.get(storeId);
@@ -500,8 +500,18 @@ class StoreObserver {
    * 消えた商品をデータベースに保存（検証待ちとしてマーク）
    */
   private async saveRemovedProductToDatabase(storeId: string, product: EbayProduct): Promise<void> {
-    await prisma.product.create({
-      data: {
+    // 既存の商品がある場合は更新、ない場合は作成
+    await prisma.product.upsert({
+      where: {
+        ebayItemId: product.itemId
+      },
+      update: {
+        // 既存商品のステータスをREMOVEDに更新し、検証待ちとしてマーク
+        status: 'REMOVED',
+        verificationStatus: 'PENDING',
+        lastSeenAt: new Date(),
+      },
+      create: {
         storeId,
         ebayItemId: product.itemId,
         title: product.title,
@@ -583,7 +593,7 @@ class StoreObserver {
   /**
    * 全ページの商品一覧を取得（ebayCrawlerServiceから移植）
    */
-  private async getAllProducts(shopName: string): Promise<EbayProduct[]> {
+  private async getAllProducts(shopName: string, storeId?: string): Promise<EbayProduct[]> {
     console.log(`🌐 ストア「${shopName}」の商品取得を開始します...`);
     
     // クロール設定を取得
@@ -598,7 +608,7 @@ class StoreObserver {
       console.log(`🔒 ストア「${shopName}」の処理中です。並列実行を防ぎます。`);
     }
     
-    const result = await ebayCrawlerService.getAllProducts(shopName);
+    const result = await ebayCrawlerService.getAllProducts(shopName, storeId);
     
     console.log(`✅ ストア「${shopName}」の商品取得が完了しました (${result.length}件)`);
     

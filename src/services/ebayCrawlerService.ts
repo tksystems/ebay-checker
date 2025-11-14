@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
-import { ProductStatus, CrawlLogStatus } from "@prisma/client";
-import { getProxyConfig, getCrawlConfig } from "../config/proxy";
+import { ProductStatus, CrawlLogStatus, ProxyUsageEventType } from "@prisma/client";
+import { getCrawlConfig } from "../config/proxy";
+import { proxyService } from "./proxyService";
 
 // サーバーサイドでのみPlaywrightをインポート
 let chromium: typeof import('playwright-extra').chromium | undefined;
@@ -97,7 +98,7 @@ export class EbayCrawlerService {
         await this.updateCrawlStatus(store.id, true);
 
         // 全ページの商品を取得
-        const products = await this.getAllProducts(store.storeName);
+        const products = await this.getAllProducts(store.storeName, store.id);
         
         // 商品情報をデータベースに保存・更新
         const result = await this.processProducts(store.id, products);
@@ -166,7 +167,7 @@ export class EbayCrawlerService {
   /**
    * 全ページの商品一覧を取得（ページング対応）
    */
-  async getAllProducts(shopName: string): Promise<EbayProduct[]> {
+  async getAllProducts(shopName: string, storeId?: string): Promise<EbayProduct[]> {
     if (!chromium) {
       throw new Error('Playwright is not available. This service should only be used in CLI scripts.');
     }
@@ -175,11 +176,23 @@ export class EbayCrawlerService {
     const browserStartTime = Date.now();
       
       // プロキシ設定とクロール設定を取得
-      const proxyConfig = getProxyConfig();
+      const proxyConfig = await proxyService.getAvailableProxy();
       const crawlConfig = getCrawlConfig();
-      console.log(`🔧 プロキシ設定: ${proxyConfig.enabled ? '有効' : '無効'}`);
-      if (proxyConfig.enabled) {
+      
+      // プロキシIDを保持（チャレンジ検出時に使用）
+      let currentProxyId: string | null = null;
+      
+      console.log(`🔧 プロキシ設定: ${proxyConfig ? '有効' : '無効'}`);
+      if (proxyConfig) {
         console.log(`🌐 プロキシ: ${proxyConfig.host}:${proxyConfig.port} (${proxyConfig.type})`);
+        currentProxyId = proxyConfig.id;
+        
+        // プロキシ使用開始ログを記録
+        await proxyService.logProxyUsage(
+          proxyConfig.id,
+          ProxyUsageEventType.USED,
+          { storeId }
+        );
       }
       console.log(`⏱️  クロール間隔設定: ページ間隔=${crawlConfig.pageInterval}ms, 初回遅延=${crawlConfig.initialDelay}ms, ページ読み込み後遅延=${crawlConfig.pageLoadDelay}ms`);
       
@@ -208,21 +221,17 @@ export class EbayCrawlerService {
       };
 
       // プロキシ設定を追加
-      if (proxyConfig.enabled) {
-        if (proxyConfig.type === 'http') {
-          launchOptions.proxy = {
-            server: `http://${proxyConfig.host}:${proxyConfig.port}`,
-            username: proxyConfig.username,
-            password: proxyConfig.password
-          };
-        } else if (proxyConfig.type === 'socks5') {
-          launchOptions.proxy = {
-            server: `socks5://${proxyConfig.host}:${proxyConfig.port}`,
-            username: proxyConfig.username,
-            password: proxyConfig.password
-          };
-        }
-        console.log(`🌐 プロキシ設定完了: ${proxyConfig.type}://${proxyConfig.host}:${proxyConfig.port}`);
+      if (proxyConfig) {
+        const proxyServer = proxyConfig.type === 'HTTP' 
+          ? `http://${proxyConfig.host}:${proxyConfig.port}`
+          : `socks5://${proxyConfig.host}:${proxyConfig.port}`;
+        
+        launchOptions.proxy = {
+          server: proxyServer,
+          username: proxyConfig.username || undefined,
+          password: proxyConfig.password || undefined
+        };
+        console.log(`🌐 プロキシ設定完了: ${proxyServer}`);
       }
 
       browser = await chromium.launch(launchOptions);
@@ -338,6 +347,22 @@ export class EbayCrawlerService {
             console.log(`❌ eBayチャレンジページにリダイレクトされました`);
             console.log(`📄 チャレンジURL: ${finalUrl}`);
             console.log(`📄 チャレンジタイトル: ${finalTitle}`);
+            
+            // プロキシをブロックしてログを記録
+            if (currentProxyId) {
+              const challengeUrl = url; // アクセスしようとしたURL
+              await proxyService.markProxyAsBlocked(currentProxyId);
+              await proxyService.logProxyUsage(
+                currentProxyId,
+                ProxyUsageEventType.CHALLENGE_DETECTED,
+                {
+                  storeId,
+                  url: challengeUrl,
+                  errorMessage: `eBayチャレンジページにリダイレクト: ${finalTitle}`
+                }
+              );
+            }
+            
             throw new Error(`eBayチャレンジページにリダイレクトされました: ${finalTitle}`);
           }
           
@@ -782,6 +807,16 @@ export class EbayCrawlerService {
       }
 
       console.log(`全ページ完了: 合計 ${allProducts.length}件の商品を取得しました`);
+      
+      // 成功時のログを記録
+      if (currentProxyId) {
+        await proxyService.logProxyUsage(
+          currentProxyId,
+          ProxyUsageEventType.SUCCESS,
+          { storeId }
+        );
+      }
+      
       return allProducts;
 
     } catch (pageError) {
@@ -790,6 +825,21 @@ export class EbayCrawlerService {
         console.error(`📝 ページエラー名: ${pageError.name}`);
         console.error(`📝 ページエラーメッセージ: ${pageError.message}`);
         console.error(`📝 ページスタックトレース:`, pageError.stack);
+      }
+      
+      // エラー時のログを記録（チャレンジ検出以外のエラー）
+      if (currentProxyId) {
+        const errorMessage = pageError instanceof Error ? pageError.message : String(pageError);
+        if (!errorMessage.includes('チャレンジページ')) {
+          await proxyService.logProxyUsage(
+            currentProxyId,
+            ProxyUsageEventType.ERROR,
+            {
+              storeId,
+              errorMessage
+            }
+          );
+        }
       }
       
       // エラー発生時のシステム状態を記録
