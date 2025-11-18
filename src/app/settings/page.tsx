@@ -15,7 +15,7 @@ interface User {
 }
 
 export default function SettingsPage() {
-  const { data: session, update } = useSession()
+  const { update } = useSession()
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)

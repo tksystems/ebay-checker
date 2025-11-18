@@ -2,6 +2,17 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth/next"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { Prisma, NotificationStatus } from "@prisma/client"
+
+// 型ガード: 文字列が有効なNotificationStatusかチェック
+function isValidNotificationStatus(value: string): value is NotificationStatus {
+  const validStatuses: readonly NotificationStatus[] = [
+    NotificationStatus.PENDING,
+    NotificationStatus.SENT,
+    NotificationStatus.FAILED
+  ]
+  return validStatuses.includes(value as NotificationStatus)
+}
 
 // 通知履歴を取得
 export async function GET(request: NextRequest) {
@@ -21,14 +32,15 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const limit = parseInt(searchParams.get('limit') || '50')
     const offset = parseInt(searchParams.get('offset') || '0')
-    const status = searchParams.get('status') // PENDING, SENT, FAILED
+    const statusParam = searchParams.get('status') // PENDING, SENT, FAILED
 
-    const where: any = {
+    const where: Prisma.NotificationWhereInput = {
       userId: session.user.id
     }
 
-    if (status) {
-      where.status = status
+    // 有効なNotificationStatus値かチェック
+    if (statusParam && isValidNotificationStatus(statusParam)) {
+      where.status = statusParam
     }
 
     // 通知履歴を取得

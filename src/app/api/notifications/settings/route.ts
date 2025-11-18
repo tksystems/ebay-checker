@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth/next"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { Prisma } from "@prisma/client"
 
 // 通知設定を取得
 export async function GET() {
@@ -81,7 +82,7 @@ export async function PATCH(request: NextRequest) {
     } = body
 
     // 通知設定を更新（存在しない場合は作成）
-    const updateData: any = {}
+    const updateData: Prisma.NotificationSettingsUpdateInput = {}
     if (emailEnabled !== undefined) updateData.emailEnabled = emailEnabled
     if (lineEnabled !== undefined) updateData.lineEnabled = lineEnabled
     if (lineNotifyToken !== undefined) updateData.lineNotifyToken = lineNotifyToken || null
