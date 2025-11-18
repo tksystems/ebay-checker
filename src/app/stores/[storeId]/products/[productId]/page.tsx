@@ -148,7 +148,7 @@ export default function ProductDetailPage({
     <div className="min-h-screen bg-gray-50">
       {/* ヘッダー */}
       <div className="bg-white shadow-sm border-b">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-1980 mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center py-6">
             <button
               onClick={() => window.history.back()}
@@ -165,7 +165,7 @@ export default function ProductDetailPage({
       </div>
 
       {/* メインコンテンツ */}
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-1980 mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="bg-white shadow rounded-lg">
           <div className="px-6 py-8">
             {/* 商品タイトル */}

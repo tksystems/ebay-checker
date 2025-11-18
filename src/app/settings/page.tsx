@@ -147,7 +147,7 @@ export default function SettingsPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 p-8">
-        <div className="max-w-4xl mx-auto">
+        <div className="max-w-1980 mx-auto">
           <div className="text-center">読み込み中...</div>
         </div>
       </div>
@@ -157,7 +157,7 @@ export default function SettingsPage() {
   if (!user) {
     return (
       <div className="min-h-screen bg-gray-50 p-8">
-        <div className="max-w-4xl mx-auto">
+        <div className="max-w-1980 mx-auto">
           <div className="text-center text-red-600">ユーザー情報の取得に失敗しました</div>
         </div>
       </div>

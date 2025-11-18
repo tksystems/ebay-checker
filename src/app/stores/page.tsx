@@ -195,8 +195,8 @@ export default function StoresPage() {
     <div className="min-h-screen bg-gray-50">
       {/* ヘッダー */}
       <div className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-6">
+        <div className="max-w-1980 mx-auto px-4 sm:px-4 lg:px-6">
+          <div className="flex justify-between items-center py-4">
             <div>
               <h1 className="text-3xl font-bold text-gray-900">eBayストア管理</h1>
               <p className="mt-2 text-gray-600">ストアの監視と商品管理を行います</p>
@@ -213,15 +213,15 @@ export default function StoresPage() {
       </div>
 
       {/* メインコンテンツ */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-1980 mx-auto p-0">
         {/* ストア一覧 */}
         <div className="bg-white shadow rounded-lg">
-          <div className="px-6 py-4 border-b border-gray-200">
+          <div className="px-4 py-3 border-b border-gray-200">
             <h2 className="text-lg font-medium text-gray-900">登録済みストア</h2>
           </div>
           
           {stores.length === 0 ? (
-            <div className="px-6 py-12 text-center">
+            <div className="px-4 py-8 text-center">
               <p className="text-gray-500">まだストアが登録されていません</p>
               <button
                 onClick={() => setShowAddForm(true)}
@@ -236,22 +236,22 @@ export default function StoresPage() {
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       ストア名
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       商品数
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       最終クロール
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       状態
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       購読
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       操作
                     </th>
                   </tr>
@@ -259,7 +259,7 @@ export default function StoresPage() {
                 <tbody className="bg-white divide-y divide-gray-200">
                   {stores.map((store) => (
                     <tr key={store.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-3 py-2 whitespace-nowrap">
                         <div>
                           <div className="text-sm font-medium text-gray-900">
                             {store.storeName}
@@ -269,16 +269,16 @@ export default function StoresPage() {
                           </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
                         {store.productCount}件
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
                         {store.lastCrawledAt 
                           ? new Date(store.lastCrawledAt).toLocaleString('ja-JP')
                           : '未実行'
                         }
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-3 py-2 whitespace-nowrap">
                         <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
                           store.isActive 
                             ? 'bg-green-100 text-green-800' 
@@ -287,7 +287,7 @@ export default function StoresPage() {
                           {store.isActive ? 'アクティブ' : '非アクティブ'}
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-3 py-2 whitespace-nowrap">
                         {store.isSubscribed ? (
                           <button
                             onClick={() => unsubscribeFromStore(store.id, store.storeName)}
@@ -308,7 +308,7 @@ export default function StoresPage() {
                           </button>
                         )}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
+                      <td className="px-4 py-3 whitespace-nowrap text-sm font-medium space-x-2">
                         <Link
                           href={`/stores/${store.id}/products`}
                           className="inline-flex items-center px-3 py-1 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 active:bg-gray-100 active:scale-95 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 transition-all duration-150"
@@ -328,10 +328,10 @@ export default function StoresPage() {
         {/* クロール結果表示 */}
         {Object.keys(crawlResults).length > 0 && (
           <div className="mt-6 bg-white shadow rounded-lg">
-            <div className="px-6 py-4 border-b border-gray-200">
+            <div className="px-4 py-3 border-b border-gray-200">
               <h2 className="text-lg font-medium text-gray-900">クロール結果</h2>
             </div>
-            <div className="px-6 py-4">
+            <div className="px-4 py-3">
               {Object.entries(crawlResults).map(([storeId, result]) => {
                 const store = stores.find(s => s.id === storeId)
                 return (

@@ -173,8 +173,8 @@ export default function ProductsPage({ params }: { params: Promise<{ storeId: st
     <div className="min-h-screen bg-gray-50">
       {/* ヘッダー */}
       <div className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center py-6">
+        <div className="max-w-1980 mx-auto px-4 sm:px-4 lg:px-6">
+          <div className="flex items-center py-4">
             <button
               onClick={() => window.history.back()}
               className="mr-4 p-2 text-gray-400 hover:text-gray-600"
@@ -190,10 +190,10 @@ export default function ProductsPage({ params }: { params: Promise<{ storeId: st
       </div>
 
       {/* メインコンテンツ */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-1980 mx-auto p-0">
         {/* フィルターとソート */}
         <div className="bg-white shadow rounded-lg mb-6">
-          <div className="px-6 py-4 border-b border-gray-200">
+          <div className="px-4 py-3 border-b border-gray-200">
             <div className="flex flex-wrap items-center gap-4">
               {/* フィルター */}
               <div className="flex items-center space-x-2">
@@ -237,7 +237,7 @@ export default function ProductsPage({ params }: { params: Promise<{ storeId: st
         {/* 商品一覧 */}
         <div className="bg-white shadow rounded-lg">
           {filteredAndSortedProducts.length === 0 ? (
-            <div className="px-6 py-12 text-center">
+            <div className="px-4 py-8 text-center">
               <p className="text-gray-500">商品が見つかりません</p>
             </div>
           ) : (
@@ -245,22 +245,22 @@ export default function ProductsPage({ params }: { params: Promise<{ storeId: st
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       商品名
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       価格
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       状態
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       最終確認
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       売れた日時
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       操作
                     </th>
                   </tr>
@@ -268,35 +268,35 @@ export default function ProductsPage({ params }: { params: Promise<{ storeId: st
                 <tbody className="bg-white divide-y divide-gray-200">
                   {filteredAndSortedProducts.map((product) => (
                     <tr key={product.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4">
+                      <td className="px-3 py-2">
                         <div className="text-sm font-medium text-gray-900 max-w-xs truncate">
                           {product.title}
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-3 py-2 whitespace-nowrap">
                         <div className="flex items-center text-sm text-gray-900">
                           <CurrencyDollarIcon className="h-4 w-4 mr-1" />
                           {product.price.toFixed(2)}
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-3 py-2 whitespace-nowrap">
                         <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(product.status)}`}>
                           {getStatusText(product.status)}
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-500">
                         <div className="flex items-center">
                           <ClockIcon className="h-4 w-4 mr-1" />
                           {new Date(product.lastSeenAt).toLocaleString('ja-JP')}
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-500">
                         {product.soldAt 
                           ? new Date(product.soldAt).toLocaleString('ja-JP')
                           : '-'
                         }
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                      <td className="px-3 py-2 whitespace-nowrap text-sm font-medium">
                         <Link
                           href={`/stores/${resolvedParams.storeId}/products/${product.id}`}
                           className="inline-flex items-center px-3 py-1 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 active:bg-gray-100 active:scale-95 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 transition-all duration-150"
