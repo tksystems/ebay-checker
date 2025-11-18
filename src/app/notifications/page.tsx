@@ -162,7 +162,7 @@ export default function NotificationsPage() {
             <BellIcon className="h-8 w-8 mr-3 text-yellow-600" />
             通知設定
           </h1>
-          <p className="text-gray-600 mt-2">商品の売上や価格変動などの通知を管理します</p>
+          <p className="text-gray-600 mt-2">商品が売れたときの通知を管理します</p>
         </div>
 
         {/* 通知方法の設定 */}
@@ -244,46 +244,10 @@ export default function NotificationsPage() {
             <h2 className="text-lg font-medium text-gray-900">通知タイプ</h2>
           </div>
           <div className="p-6 space-y-4">
-            {/* 新商品の通知 */}
+            {/* 商品が売れたときの通知 */}
             <div className="flex items-center justify-between">
               <div>
-                <div className="font-medium text-gray-900">新商品の通知</div>
-                <div className="text-sm text-gray-500">新しい商品が追加されたときに通知します</div>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={settings.notifyOnNewProduct}
-                  onChange={(e) => updateSettings({ notifyOnNewProduct: e.target.checked })}
-                  disabled={saving}
-                  className="sr-only peer"
-                />
-                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-              </label>
-            </div>
-
-            {/* 価格変動の通知 */}
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="font-medium text-gray-900">価格変動の通知</div>
-                <div className="text-sm text-gray-500">商品の価格が変更されたときに通知します</div>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={settings.notifyOnPriceChange}
-                  onChange={(e) => updateSettings({ notifyOnPriceChange: e.target.checked })}
-                  disabled={saving}
-                  className="sr-only peer"
-                />
-                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-              </label>
-            </div>
-
-            {/* 売上確定の通知 */}
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="font-medium text-gray-900">売上確定の通知</div>
+                <div className="font-medium text-gray-900">商品が売れたときの通知</div>
                 <div className="text-sm text-gray-500">商品が売れたことが確定したときに通知します</div>
               </div>
               <label className="relative inline-flex items-center cursor-pointer">
@@ -291,24 +255,6 @@ export default function NotificationsPage() {
                   type="checkbox"
                   checked={settings.notifyOnSold}
                   onChange={(e) => updateSettings({ notifyOnSold: e.target.checked })}
-                  disabled={saving}
-                  className="sr-only peer"
-                />
-                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-              </label>
-            </div>
-
-            {/* 在庫変動の通知 */}
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="font-medium text-gray-900">在庫変動の通知</div>
-                <div className="text-sm text-gray-500">商品の在庫数が変更されたときに通知します</div>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={settings.notifyOnQuantityChange}
-                  onChange={(e) => updateSettings({ notifyOnQuantityChange: e.target.checked })}
                   disabled={saving}
                   className="sr-only peer"
                 />
