@@ -41,10 +41,14 @@ export class NotificationService {
       }
 
       // 通知設定を取得
+      // 登録ユーザー全員（通知設定でnotifyOnSoldがtrueのユーザー）に通知を送信
       const notificationSettings = await prisma.notificationSettings.findMany({
         where: {
           notifyOnSold: true,
-          emailEnabled: true
+          OR: [
+            { emailEnabled: true },
+            { lineEnabled: true }
+          ]
         },
         include: {
           user: true
@@ -56,35 +60,149 @@ export class NotificationService {
 
       for (const setting of notificationSettings) {
         try {
-          // ストアを購読しているかチェック
-          const subscription = await prisma.subscription.findFirst({
-            where: {
-              userId: setting.userId,
-              storeId,
-              isActive: true
-            }
-          });
-
-          if (!subscription) {
-            continue; // このストアを購読していない場合はスキップ
-          }
-
           // 通知メッセージを作成
           const subject = `💰 商品が売れました - ${soldProducts[0].store.storeName}`;
           const message = this.createSalesNotificationMessage(soldProducts, setting.user.name);
 
-          // 通知を送信
-          await this.sendNotification(
-            setting.userId,
-            subject,
-            message,
-            NotificationType.EMAIL
-          );
+          // メール通知を送信
+          if (setting.emailEnabled) {
+            await this.sendNotification(
+              setting.userId,
+              subject,
+              message,
+              NotificationType.EMAIL
+            );
+            notificationsSent++;
+          }
 
-          notificationsSent++;
+          // LINE通知を送信
+          if (setting.lineEnabled && setting.lineNotifyToken) {
+            await this.sendNotification(
+              setting.userId,
+              subject,
+              message,
+              NotificationType.LINE
+            );
+            notificationsSent++;
+          }
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'Unknown error';
           errors.push(`User ${setting.userId}: ${errorMessage}`);
+        }
+      }
+
+      return {
+        notificationsSent,
+        errors
+      };
+    } catch (error) {
+      return {
+        notificationsSent: 0,
+        errors: [error instanceof Error ? error.message : 'Unknown error']
+      };
+    }
+  }
+
+  /**
+   * 検証で確定した商品IDリストを指定して通知を送信
+   * 検証処理直後に呼び出されることを想定
+   */
+  async notifyVerifiedSoldProducts(productIds: string[]): Promise<{
+    notificationsSent: number;
+    errors: string[];
+  }> {
+    if (productIds.length === 0) {
+      return {
+        notificationsSent: 0,
+        errors: []
+      };
+    }
+
+    try {
+      // 検証で確定した売上商品を取得
+      const soldProducts = await prisma.product.findMany({
+        where: {
+          id: {
+            in: productIds
+          },
+          verificationStatus: VerificationStatus.SOLD_CONFIRMED,
+          status: ProductStatus.SOLD
+        },
+        include: {
+          store: true
+        },
+        orderBy: {
+          soldAt: 'desc'
+        }
+      });
+
+      if (soldProducts.length === 0) {
+        return {
+          notificationsSent: 0,
+          errors: []
+        };
+      }
+
+      // ストアごとにグループ化
+      const productsByStore = new Map<string, typeof soldProducts>();
+      for (const product of soldProducts) {
+        if (!productsByStore.has(product.storeId)) {
+          productsByStore.set(product.storeId, []);
+        }
+        productsByStore.get(product.storeId)!.push(product);
+      }
+
+      // 通知設定を取得
+      const notificationSettings = await prisma.notificationSettings.findMany({
+        where: {
+          notifyOnSold: true,
+          OR: [
+            { emailEnabled: true },
+            { lineEnabled: true }
+          ]
+        },
+        include: {
+          user: true
+        }
+      });
+
+      let notificationsSent = 0;
+      const errors: string[] = [];
+
+      // 各ストアごとに通知を送信
+      // 登録ユーザー全員（通知設定でnotifyOnSoldがtrueのユーザー）に通知を送信
+      for (const [storeId, products] of productsByStore.entries()) {
+        for (const setting of notificationSettings) {
+          try {
+            // 通知メッセージを作成
+            const subject = `💰 商品が売れました - ${products[0].store.storeName}`;
+            const message = this.createSalesNotificationMessage(products, setting.user.name);
+
+            // メール通知を送信
+            if (setting.emailEnabled) {
+              await this.sendNotification(
+                setting.userId,
+                subject,
+                message,
+                NotificationType.EMAIL
+              );
+              notificationsSent++;
+            }
+
+            // LINE通知を送信
+            if (setting.lineEnabled && setting.lineNotifyToken) {
+              await this.sendNotification(
+                setting.userId,
+                subject,
+                message,
+                NotificationType.LINE
+              );
+              notificationsSent++;
+            }
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            errors.push(`User ${setting.userId}, Store ${storeId}: ${errorMessage}`);
+          }
         }
       }
 

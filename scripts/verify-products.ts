@@ -8,24 +8,51 @@
  * npm run verify:products -- --retry        # エラー商品の再処理
  * npm run verify:products -- --stats        # 検証統計の表示
  * npm run verify:products -- --cleanup      # 古い検証データのクリーンアップ
+ * npm run verify:products -- --no-notify   # 通知を送信しない（検証のみ）
  */
 
 import { VerificationBatchProcessor } from '../src/services/verificationBatchProcessor';
+import { NotificationService } from '../src/services/notificationService';
 
 async function main() {
   const args = process.argv.slice(2);
   const command = args[0] || 'process';
+  const skipNotification = args.includes('--no-notify');
 
   const processor = new VerificationBatchProcessor();
+  const notificationService = new NotificationService();
 
   try {
     switch (command) {
       case 'process':
         console.log('🚀 最新の売れた商品の検証処理を開始します...');
-        await processor.processPendingVerifications({
+        const result = await processor.processPendingVerifications({
           batchSize: 10,
           delayBetweenBatches: 2000
         });
+
+        // 検証で確定した売上商品がある場合、通知を送信
+        if (result.soldProductIds.length > 0 && !skipNotification) {
+          console.log(`\n📧 検証で確定した売上商品 ${result.soldProductIds.length}件の通知を送信します...`);
+          const notificationResult = await notificationService.notifyVerifiedSoldProducts(
+            result.soldProductIds
+          );
+          
+          if (notificationResult.notificationsSent > 0) {
+            console.log(`✅ 通知送信完了: ${notificationResult.notificationsSent}件の通知を送信しました`);
+          } else {
+            console.log('ℹ️  通知対象のユーザーがいませんでした');
+          }
+          
+          if (notificationResult.errors.length > 0) {
+            console.log(`⚠️  通知エラー: ${notificationResult.errors.length}件`);
+            notificationResult.errors.forEach(error => {
+              console.log(`   - ${error}`);
+            });
+          }
+        } else if (result.soldProductIds.length > 0 && skipNotification) {
+          console.log(`\nℹ️  検証で確定した売上商品 ${result.soldProductIds.length}件がありますが、通知はスキップされました`);
+        }
         break;
 
       case 'retry':
@@ -58,7 +85,8 @@ async function main() {
         console.log('  cleanup  - 古い検証データのクリーンアップ');
         console.log('');
         console.log('オプション:');
-        console.log('  --force  - クリーンアップ時に実際の削除を実行');
+        console.log('  --force     - クリーンアップ時に実際の削除を実行');
+        console.log('  --no-notify - 通知を送信しない（検証のみ）');
         process.exit(1);
     }
 

@@ -436,16 +436,29 @@ class StoreObserver {
     const removedItemIds = new Set([...cachedItemIds].filter(id => !currentItemIds.has(id)));
     console.log(`❌ 消えた商品: ${removedItemIds.size}件`);
 
-    // 消えた商品のみをDBに保存
-    if (removedItemIds.size > 0) {
+    // 消えた商品が5件を超える場合は、比較元がおかしいと判定
+    const REMOVED_THRESHOLD = 5;
+    if (removedItemIds.size > REMOVED_THRESHOLD) {
+      console.warn(`⚠️  消えた商品が${removedItemIds.size}件と異常に多いため、比較元（メモリキャッシュ）が不正確と判定します`);
+      console.warn(`⚠️  DBへの保存をスキップし、比較元を現在の商品一覧で更新します`);
+      
+      // DBには保存せず、比較元を更新するだけ
+      // productsSoldはカウントしない
+    } else if (removedItemIds.size > 0) {
+      // 消えた商品が5件以下の場合のみDBに保存
       console.log(`💾 消えた商品をDBに保存します...`);
       
       // 消えた商品をDBに保存（検証待ちとしてマーク）
       for (const itemId of removedItemIds) {
         const cachedProduct = cache.products.get(itemId);
         if (cachedProduct) {
-          await this.saveRemovedProductToDatabase(storeId, cachedProduct);
-          productsSold++;
+          try {
+            await this.saveRemovedProductToDatabase(storeId, cachedProduct);
+            productsSold++;
+          } catch (error) {
+            console.error(`❌ 商品 ${itemId} の保存に失敗:`, error);
+            // エラーが発生しても処理を続行
+          }
         }
       }
     }
@@ -456,35 +469,27 @@ class StoreObserver {
       productsNew = newItemIds.size; // 統計用のカウントのみ
     }
 
-    // 変化があった場合（新商品または消えた商品）はベースラインを更新
+    // ベースラインを常に更新（最新の状態を保持）
+    // 消えた商品が5件を超えた場合も、比較元を更新する
+    const newProductMap = new Map<string, EbayProduct>();
+    currentProducts.forEach(product => {
+      newProductMap.set(product.itemId, product);
+    });
+    
+    this.storeProductCache.set(storeId, {
+      storeId,
+      products: newProductMap,
+      lastUpdated: new Date()
+    });
+    
     if (newItemIds.size > 0 || removedItemIds.size > 0) {
-      console.log(`🔄 ベースラインを更新します...`);
-      const newProductMap = new Map<string, EbayProduct>();
-      currentProducts.forEach(product => {
-        newProductMap.set(product.itemId, product);
-      });
-      
-      this.storeProductCache.set(storeId, {
-        storeId,
-        products: newProductMap,
-        lastUpdated: new Date()
-      });
-      
-      console.log(`✅ ベースライン更新完了: ${newProductMap.size}件の商品をメモリに保存`);
+      if (removedItemIds.size > REMOVED_THRESHOLD) {
+        console.log(`🔄 比較元を更新しました（異常検出のためDB保存はスキップ）: ${newProductMap.size}件の商品をメモリに保存`);
+      } else {
+        console.log(`🔄 ベースライン更新完了: ${newProductMap.size}件の商品をメモリに保存`);
+      }
     } else {
-      console.log(`✅ 変化なし: メモリの商品一覧を更新します`);
-      
-      // 変化がなくても、メモリの商品一覧を更新（最新の状態を保持）
-      const newProductMap = new Map<string, EbayProduct>();
-      currentProducts.forEach(product => {
-        newProductMap.set(product.itemId, product);
-      });
-      
-      this.storeProductCache.set(storeId, {
-        storeId,
-        products: newProductMap,
-        lastUpdated: new Date()
-      });
+      console.log(`✅ 変化なし: メモリの商品一覧を更新しました`);
     }
 
     return {

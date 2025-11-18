@@ -40,6 +40,7 @@ export class VerificationNotificationService {
         deleted: number; // 削除された商品数（売れていなかった商品）
         errors: number;
       };
+      soldProductIds: string[]; // 検証で確定した売上商品のIDリスト
     };
     notificationResult: {
       notificationsSent: number;
@@ -71,31 +72,46 @@ export class VerificationNotificationService {
     if (sendNotifications && verificationResult.summary.sold > 0) {
       console.log('📧 売上通知を送信します...');
       
-      // 売上確認された商品があるストアを取得
-      const storesWithSales = await prisma.product.findMany({
-        where: {
-          verificationStatus: VerificationStatus.SOLD_CONFIRMED,
-          status: ProductStatus.SOLD,
-          soldAt: {
-            gte: new Date(Date.now() - 24 * 60 * 60 * 1000) // 過去24時間以内
-          }
-        },
-        select: {
-          storeId: true
-        },
-        distinct: ['storeId']
-      });
-
-      // 各ストアに対して通知を送信
-      for (const store of storesWithSales) {
+      // 検証で確定した売上商品IDリストを使用して通知を送信
+      if (verificationResult.soldProductIds && verificationResult.soldProductIds.length > 0) {
         try {
-          const result = await this.notificationService.notifyVerifiedSales(store.storeId);
-          notificationResult.notificationsSent += result.notificationsSent;
-          notificationResult.errors.push(...result.errors);
+          const result = await this.notificationService.notifyVerifiedSoldProducts(
+            verificationResult.soldProductIds
+          );
+          notificationResult.notificationsSent = result.notificationsSent;
+          notificationResult.errors = result.errors;
         } catch (error) {
           notificationResult.errors.push(
-            `Store ${store.storeId}: ${error instanceof Error ? error.message : 'Unknown error'}`
+            `通知送信エラー: ${error instanceof Error ? error.message : 'Unknown error'}`
           );
+        }
+      } else {
+        // フォールバック: 従来の方法で通知を送信（後方互換性のため）
+        const storesWithSales = await prisma.product.findMany({
+          where: {
+            verificationStatus: VerificationStatus.SOLD_CONFIRMED,
+            status: ProductStatus.SOLD,
+            soldAt: {
+              gte: new Date(Date.now() - 24 * 60 * 60 * 1000) // 過去24時間以内
+            }
+          },
+          select: {
+            storeId: true
+          },
+          distinct: ['storeId']
+        });
+
+        // 各ストアに対して通知を送信
+        for (const store of storesWithSales) {
+          try {
+            const result = await this.notificationService.notifyVerifiedSales(store.storeId);
+            notificationResult.notificationsSent += result.notificationsSent;
+            notificationResult.errors.push(...result.errors);
+          } catch (error) {
+            notificationResult.errors.push(
+              `Store ${store.storeId}: ${error instanceof Error ? error.message : 'Unknown error'}`
+            );
+          }
         }
       }
 

@@ -29,6 +29,7 @@ export class VerificationBatchProcessor {
       deleted: number; // 削除された商品数（売れていなかった商品）
       errors: number;
     };
+    soldProductIds: string[]; // 検証で確定した売上商品のIDリスト
   }> {
     const {
       batchSize = 10,
@@ -43,6 +44,7 @@ export class VerificationBatchProcessor {
       deleted: 0, // 削除された商品数（売れていなかった商品）
       errors: 0
     };
+    const soldProductIds: string[] = []; // 検証で確定した売上商品のIDリスト
 
     console.log('🔍 最新の売れた商品の検証を開始します...');
 
@@ -87,6 +89,8 @@ export class VerificationBatchProcessor {
           // 検証結果に基づいて集計
           if (result.verificationResult.isSold) {
             summary.sold++;
+            // 検証で確定した売上商品のIDを記録
+            soldProductIds.push(result.productId);
           } else {
             // 売れていない場合は削除されたため、削除カテゴリとして扱う
             summary.deleted++;
@@ -120,7 +124,8 @@ export class VerificationBatchProcessor {
       totalProcessed,
       successful,
       failed,
-      summary
+      summary,
+      soldProductIds
     };
   }
 
